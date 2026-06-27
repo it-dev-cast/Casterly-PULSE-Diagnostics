@@ -1,0 +1,288 @@
+import { useState, useRef } from "react";
+import { CheckCircle2, XCircle, RefreshCw, ChevronRight, MousePointer2 } from "lucide-react";
+
+interface TouchpadTestProps {
+  onNext: () => void;
+}
+
+interface Point {
+  x: number;
+  y: number;
+}
+
+export function TouchpadTest({ onNext }: TouchpadTestProps) {
+  const [leftClick, setLeftClick] = useState(false);
+  const [rightClick, setRightClick] = useState(false);
+  const [movement, setMovement] = useState(false);
+  const [scroll, setScroll] = useState(false);
+  const [cursorPos, setCursorPos] = useState<Point>({ x: 50, y: 50 });
+  const [trail, setTrail] = useState<Point[]>([]);
+  const [result, setResult] = useState<"pass" | "fail" | null>(null);
+  const padRef = useRef<HTMLDivElement>(null);
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = padRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    setCursorPos({ x, y });
+    setMovement(true);
+    setTrail((t) => [...t.slice(-30), { x, y }]);
+  };
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setRightClick(true);
+  };
+
+  const reset = () => {
+    setLeftClick(false);
+    setRightClick(false);
+    setMovement(false);
+    setScroll(false);
+    setTrail([]);
+    setResult(null);
+    setCursorPos({ x: 50, y: 50 });
+  };
+
+  const allPassed = leftClick && rightClick && movement;
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-slate-800">Touchpad Test</h1>
+          <p className="text-sm text-slate-500 mt-0.5">Validate touchpad gestures and click detection</p>
+        </div>
+        <button
+          onClick={reset}
+          className="flex items-center gap-1.5 text-sm text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 px-3 py-1.5 rounded-lg transition-colors"
+        >
+          <RefreshCw size={13} />
+          Reset
+        </button>
+      </div>
+
+      <div className="grid grid-cols-3 gap-5">
+        {/* Interactive pad */}
+        <div className="col-span-2 space-y-4">
+          <div className="bg-white rounded-xl border border-slate-200 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <MousePointer2 size={14} className="text-blue-600" />
+              <span className="text-sm text-slate-700">Cursor Tracking Zone</span>
+              <span className="text-xs text-slate-400 ml-auto">Move your mouse inside this area</span>
+            </div>
+
+            <div
+              ref={padRef}
+              className="relative bg-gradient-to-br from-slate-800 to-slate-900 rounded-xl overflow-hidden select-none cursor-none"
+              style={{ height: 280 }}
+              onMouseMove={handleMouseMove}
+              onWheel={() => setScroll(true)}
+            >
+              {/* Grid lines */}
+              <div className="absolute inset-0 opacity-10">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={`h-${i}`} className="absolute w-full border-t border-white" style={{ top: `${(i + 1) * 14.28}%` }} />
+                ))}
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <div key={`v-${i}`} className="absolute h-full border-l border-white" style={{ left: `${(i + 1) * 11.11}%` }} />
+                ))}
+              </div>
+
+              {/* Left and Right click zones */}
+              <div className="absolute inset-0 flex">
+                {/* Left click zone */}
+                <div
+                  className="flex-1 relative cursor-pointer"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setLeftClick(true);
+                  }}
+                >
+                  {!movement && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="text-center">
+                        <MousePointer2 size={24} className="text-slate-500 mx-auto mb-2" />
+                        <p className="text-slate-400 text-xs">LEFT CLICK</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Center divider */}
+                <div className="w-px bg-white/10"></div>
+
+                {/* Right click zone */}
+                <div
+                  className="flex-1 relative cursor-pointer"
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setRightClick(true);
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setRightClick(true);
+                  }}
+                >
+                  {!movement && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="text-center">
+                        <MousePointer2 size={24} className="text-slate-500 mx-auto mb-2" />
+                        <p className="text-slate-400 text-xs">RIGHT CLICK</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Trail */}
+              <svg className="absolute inset-0 w-full h-full pointer-events-none">
+                {trail.map((point, i) => (
+                  <circle
+                    key={i}
+                    cx={`${point.x}%`}
+                    cy={`${point.y}%`}
+                    r={2}
+                    fill="#3b82f6"
+                    opacity={i / trail.length * 0.6}
+                  />
+                ))}
+              </svg>
+
+              {/* Cursor */}
+              {movement && (
+                <div
+                  className="absolute w-4 h-4 -translate-x-2 -translate-y-2 pointer-events-none"
+                  style={{ left: `${cursorPos.x}%`, top: `${cursorPos.y}%` }}
+                >
+                  <div className="w-4 h-4 rounded-full border-2 border-blue-400 bg-blue-500/20" />
+                </div>
+              )}
+
+              {/* Corner labels */}
+              <div className="absolute bottom-2 left-2 text-[9px] text-slate-500 pointer-events-none">LEFT</div>
+              <div className="absolute bottom-2 right-2 text-[9px] text-slate-500 pointer-events-none">RIGHT</div>
+            </div>
+
+            <div className="flex gap-2 mt-3">
+              <div
+                className={`flex-1 py-3 text-center text-sm rounded-lg transition-all border-2 ${
+                  leftClick
+                    ? "bg-emerald-500 border-emerald-400 text-white"
+                    : "bg-slate-100 border-slate-200 text-slate-700"
+                }`}
+              >
+                {leftClick ? (
+                  <div className="flex items-center justify-center gap-1.5">
+                    <CheckCircle2 size={14} />
+                    Left Click
+                  </div>
+                ) : (
+                  "Left Click"
+                )}
+              </div>
+              <div
+                className={`flex-1 py-3 text-center text-sm rounded-lg transition-all border-2 ${
+                  rightClick
+                    ? "bg-emerald-500 border-emerald-400 text-white"
+                    : "bg-slate-100 border-slate-200 text-slate-700"
+                }`}
+              >
+                {rightClick ? (
+                  <div className="flex items-center justify-center gap-1.5">
+                    <CheckCircle2 size={14} />
+                    Right Click
+                  </div>
+                ) : (
+                  "Right Click"
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Status panel */}
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl border border-slate-200 p-4">
+            <h3 className="text-slate-700 mb-3">Detection Status</h3>
+            <div className="space-y-3">
+              {[
+                { label: "Left Click", detected: leftClick, key: "left" },
+                { label: "Right Click", detected: rightClick, key: "right" },
+                { label: "Movement", detected: movement, key: "move" },
+                { label: "Scroll", detected: scroll, key: "scroll" },
+              ].map((item) => (
+                <div key={item.key} className="flex items-center justify-between">
+                  <span className="text-sm text-slate-600">{item.label}</span>
+                  <div className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full ${
+                    item.detected
+                      ? "bg-emerald-100 text-emerald-700"
+                      : "bg-slate-100 text-slate-400"
+                  }`}>
+                    {item.detected ? (
+                      <><CheckCircle2 size={12} /> Detected</>
+                    ) : (
+                      <><div className="w-2 h-2 rounded-full border border-slate-300" /> Waiting</>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Overall result */}
+          <div className="bg-white rounded-xl border border-slate-200 p-4">
+            <h3 className="text-slate-700 mb-3">Result</h3>
+            {!result ? (
+              <div className="space-y-2">
+                <button
+                  onClick={() => setResult("pass")}
+                  disabled={!allPassed}
+                  className="w-full flex items-center justify-center gap-2 py-3 bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed text-white rounded-lg text-sm transition-colors"
+                >
+                  <CheckCircle2 size={15} />
+                  Mark as Pass
+                </button>
+                <button
+                  onClick={() => setResult("fail")}
+                  className="w-full flex items-center justify-center gap-2 py-3 bg-red-500 hover:bg-red-400 text-white rounded-lg text-sm transition-colors"
+                >
+                  <XCircle size={15} />
+                  Mark as Fail
+                </button>
+              </div>
+            ) : (
+              <div className={`flex items-center gap-2 p-3 rounded-lg ${
+                result === "pass" ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
+              }`}>
+                {result === "pass" ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
+                <span className="text-sm">Touchpad {result === "pass" ? "Passed" : "Failed"}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="bg-slate-50 rounded-xl border border-slate-200 p-3 text-xs text-slate-500 space-y-1.5">
+            <p className="font-medium text-slate-600">Instructions</p>
+            <p>1. Move cursor freely in the tracking zone</p>
+            <p>2. Perform a left click</p>
+            <p>3. Perform a right click</p>
+            <p>4. Test scroll wheel or two-finger scroll</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex justify-end">
+        <button
+          onClick={onNext}
+          disabled={!result}
+          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white text-sm px-5 py-2.5 rounded-lg transition-colors"
+        >
+          Continue to Final Review
+          <ChevronRight size={15} />
+        </button>
+      </div>
+    </div>
+  );
+}

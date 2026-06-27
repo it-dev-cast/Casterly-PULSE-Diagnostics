@@ -1,0 +1,15 @@
+pub mod cpu;
+pub mod memory;
+pub mod storage;
+pub mod system;
+pub mod collector;
+pub mod battery;
+pub mod bios;
+pub mod gpu;
+pub mod display;
+pub mod network;
+pub mod camera;
+pub mod audio;
+pub mod motherboard;
+pub mod bluetooth;
+pub mod wslhost;

@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(cargo check --manifest-path d:\\\\udiag4\\\\src-tauri\\\\Cargo.toml 2>&1)",
+      "PowerShell($c = Get-ChildItem \"$env:USERPROFILE\\\\.cargo\\\\bin\\\\cargo.exe\" -ErrorAction SilentlyContinue; if \\($c\\) { $c.FullName } else { \"not found in ~/.cargo/bin\" })",
+      "PowerShell($paths = @\\(\"$env:USERPROFILE\\\\.cargo\\\\bin\",\"C:\\\\Users\\\\Dell\\\\.rustup\",\"C:\\\\ProgramData\\\\chocolatey\\\\bin\"\\); Get-Command rustc,cargo -ErrorAction SilentlyContinue | Select-Object Name,Source; Get-ChildItem -Path C:\\\\ -Filter cargo.exe -Recurse -Depth 4 -ErrorAction SilentlyContinue | Select-Object -First 3 -ExpandProperty FullName)"
+    ]
+  }
+}
