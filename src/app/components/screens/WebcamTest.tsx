@@ -1,49 +1,72 @@
 import { useState, useRef, useEffect } from "react";
-import { Camera, CheckCircle2, XCircle, ChevronRight, RefreshCw, AlertCircle } from "lucide-react";
+import { Camera, CheckCircle2, XCircle, ChevronRight, Loader2 } from "lucide-react";
+import { useInspection } from "../../context/InspectionContext";
+import { invoke } from "@tauri-apps/api/core";
+
+type TestResult = "pass" | "fail" | null;
 
 interface WebcamTestProps {
   onNext: () => void;
 }
 
 export function WebcamTest({ onNext }: WebcamTestProps) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [cameraStatus, setCameraStatus] = useState<"idle" | "requesting" | "active" | "denied">("idle");
-  const [result, setResult] = useState<"pass" | "fail" | null>(null);
-  const [resolution, setResolution] = useState<string>("—");
-
-  const startCamera = async () => {
-    setCameraStatus("requesting");
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play();
-        const track = stream.getVideoTracks()[0];
-        const settings = track.getSettings();
-        setResolution(`${settings.width ?? "?"} × ${settings.height ?? "?"}`);
-      }
-      setCameraStatus("active");
-    } catch {
-      setCameraStatus("denied");
-    }
-  };
+  const { data, setData } = useInspection();
+  const [result, setResult] = useState<TestResult>(data.webcamTest.result);
+  const [isTesting, setIsTesting] = useState(false);
+  const [hasFinished, setHasFinished] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const isMounted = useRef(true);
 
   useEffect(() => {
+    isMounted.current = true;
     return () => {
-      if (videoRef.current?.srcObject) {
-        const stream = videoRef.current.srcObject as MediaStream;
-        stream.getTracks().forEach((t) => t.stop());
-      }
+      isMounted.current = false;
     };
   }, []);
 
-  const handleResult = (r: "pass" | "fail") => {
-    setResult(r);
-    if (videoRef.current?.srcObject) {
-      const stream = videoRef.current.srcObject as MediaStream;
-      stream.getTracks().forEach((t) => t.stop());
+  // Persist the pass/fail result into context.
+  useEffect(() => {
+    if (data.webcamTest.result !== result) {
+      setData((prev) => ({
+        ...prev,
+        webcamTest: { ...prev.webcamTest, result },
+      }));
     }
-    setCameraStatus("idle");
+  }, [result, setData, data.webcamTest.result]);
+
+  const resetTest = () => {
+    setIsTesting(false);
+    setHasFinished(false);
+    setError(null);
+  };
+
+  const startTest = async () => {
+    setError(null);
+    resetTest();
+    setIsTesting(true);
+
+    try {
+      await invoke("start_webcam_test");
+      if (isMounted.current) {
+        setIsTesting(false);
+        setHasFinished(true);
+      }
+    } catch (err: any) {
+      console.error("Webcam test failed", err);
+      if (isMounted.current) {
+        resetTest();
+        const message =
+          typeof err === "string"
+            ? err
+            : err?.message || "Unable to launch webcam preview.";
+        setError(message);
+      }
+    }
+  };
+
+  const handleResult = (res: TestResult) => {
+    setResult(res);
+    setHasFinished(false);
   };
 
   return (
@@ -63,140 +86,100 @@ export function WebcamTest({ onNext }: WebcamTestProps) {
         )}
       </div>
 
-      <div className="grid grid-cols-3 gap-5">
-        {/* Camera feed - large */}
-        <div className="col-span-2 bg-white rounded-xl border border-slate-200 overflow-hidden">
-          <div className="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Camera size={14} className="text-blue-600" />
-              <span className="text-sm text-slate-700">Camera Feed</span>
+      <div className="max-w-2xl mx-auto">
+        <div className={`bg-white rounded-xl border-2 transition-all ${
+          result === "pass" ? "border-emerald-300" :
+          result === "fail" ? "border-red-300" : "border-blue-400 shadow-md"
+        }`}>
+          <div className="p-6">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Camera size={20} className={
+                    result === "pass" ? "text-emerald-500" : result === "fail" ? "text-red-500" : "text-blue-500"
+                  } />
+                  <span className="text-lg text-slate-700">Webcam Preview Test</span>
+                </div>
+                <p className="text-xs text-slate-400 mt-1">
+                  Open the preview window and verify the camera image is clear
+                </p>
+              </div>
+              {result && (
+                <div className={`flex items-center gap-1 text-sm px-3 py-1.5 rounded ${
+                  result === "pass" ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"
+                }`}>
+                  {result === "pass" ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
+                  {result === "pass" ? "Passed" : "Failed"}
+                </div>
+              )}
             </div>
-            <div className={`flex items-center gap-1.5 text-xs ${
-              cameraStatus === "active" ? "text-emerald-600" :
-              cameraStatus === "denied" ? "text-red-500" : "text-slate-400"
-            }`}>
-              <div className={`w-2 h-2 rounded-full ${
-                cameraStatus === "active" ? "bg-emerald-500 animate-pulse" :
-                cameraStatus === "denied" ? "bg-red-500" : "bg-slate-300"
-              }`} />
-              {cameraStatus === "active" ? "Live" :
-               cameraStatus === "requesting" ? "Connecting..." :
-               cameraStatus === "denied" ? "Access Denied" : "Inactive"}
-            </div>
-          </div>
 
-          <div className="relative bg-slate-900 aspect-video flex items-center justify-center">
-            {cameraStatus === "active" ? (
-              <video ref={videoRef} className="w-full h-full object-cover" autoPlay muted playsInline />
-            ) : (
-              <div className="flex flex-col items-center gap-4 text-center p-8">
-                {cameraStatus === "denied" ? (
-                  <>
-                    <AlertCircle size={48} className="text-red-400" />
-                    <div>
-                      <p className="text-white">Camera access denied</p>
-                      <p className="text-slate-400 text-sm mt-1">Allow camera access in browser permissions</p>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <Camera size={48} className="text-slate-500" />
-                    <p className="text-slate-400">Camera not started</p>
-                  </>
-                )}
-                <button
-                  onClick={startCamera}
-                  className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-sm px-4 py-2 rounded-lg transition-colors"
-                >
-                  <RefreshCw size={14} />
-                  {cameraStatus === "denied" ? "Retry Access" : "Activate Camera"}
-                </button>
+            {error && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                {error}
               </div>
             )}
 
-            {cameraStatus === "active" && (
-              <div className="absolute bottom-3 left-3 bg-black/60 text-white text-xs px-2 py-1 rounded flex items-center gap-1.5">
-                <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                LIVE · {resolution}
+            {!isTesting && !hasFinished && !result && !error && (
+              <div className="mb-5 p-3 bg-blue-50 rounded-lg">
+                <p className="text-sm text-blue-700">
+                  Click <strong>Start Test</strong> to open the webcam preview window.
+                  Close the preview window when you are done inspecting the camera feed.
+                </p>
               </div>
             )}
-          </div>
 
-          {cameraStatus === "active" && (
-            <div className="p-4 flex gap-3">
+            {isTesting && (
+              <div className="mb-5 p-4 bg-slate-50 rounded-lg flex items-center gap-3">
+                <Loader2 size={20} className="animate-spin text-blue-500" />
+                <p className="text-sm text-slate-700">
+                  Webcam preview is open. Close the preview window to continue.
+                </p>
+              </div>
+            )}
+
+            {!isTesting && hasFinished && !result && (
+              <div className="mb-5 p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+                <p className="text-sm text-emerald-700">
+                  Preview closed. Select <strong>Pass</strong> if the camera image was clear, otherwise <strong>Fail</strong>.
+                </p>
+              </div>
+            )}
+
+            <div className="mb-4">
+              <button
+                onClick={startTest}
+                disabled={isTesting}
+                className={`w-full flex items-center justify-center gap-2 py-3 rounded-lg text-sm transition-colors ${
+                  isTesting
+                    ? "bg-slate-100 text-slate-400 cursor-not-allowed"
+                    : "bg-blue-600 hover:bg-blue-500 text-white"
+                }`}
+              >
+                {isTesting ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
+                {isTesting ? "Testing..." : result ? "Restart Test" : "Start Test"}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
               <button
                 onClick={() => handleResult("pass")}
-                className="flex-1 flex items-center justify-center gap-2 py-3 bg-emerald-500 hover:bg-emerald-400 text-white rounded-lg transition-colors"
+                disabled={!hasFinished}
+                className="flex items-center justify-center gap-2 py-3 rounded-lg text-sm bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed text-white transition-colors"
               >
-                <CheckCircle2 size={18} />
-                Pass — Camera OK
+                <CheckCircle2 size={16} />
+                Pass
               </button>
               <button
                 onClick={() => handleResult("fail")}
-                className="flex-1 flex items-center justify-center gap-2 py-3 bg-red-500 hover:bg-red-400 text-white rounded-lg transition-colors"
+                disabled={!hasFinished}
+                className="flex items-center justify-center gap-2 py-3 rounded-lg text-sm bg-red-500 hover:bg-red-400 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed text-white transition-colors"
               >
-                <XCircle size={18} />
-                Fail — Camera Issue
+                <XCircle size={16} />
+                Fail
               </button>
             </div>
-          )}
-        </div>
-
-        {/* Status panel */}
-        <div className="space-y-4">
-          <div className="bg-white rounded-xl border border-slate-200 p-4">
-            <h3 className="text-slate-700 mb-3">Camera Status</h3>
-            <div className="space-y-2.5">
-              {[
-                { label: "Status", value: cameraStatus === "active" ? "Active" : "Inactive", ok: cameraStatus === "active" },
-                { label: "Resolution", value: resolution, ok: resolution !== "—" },
-                { label: "Device", value: "HP TrueVision HD", ok: true },
-                { label: "Interface", value: "USB 2.0 Internal", ok: true },
-                { label: "Microphone", value: "Built-in Array Mic", ok: true },
-              ].map((item) => (
-                <div key={item.label} className="flex justify-between items-center">
-                  <span className="text-xs text-slate-500">{item.label}</span>
-                  <span className={`text-xs font-medium ${item.ok ? "text-slate-700" : "text-slate-400"}`}>
-                    {item.value}
-                  </span>
-                </div>
-              ))}
-            </div>
           </div>
-
-          <div className="bg-white rounded-xl border border-slate-200 p-4">
-            <h3 className="text-slate-700 mb-3">Checklist</h3>
-            <div className="space-y-2">
-              {[
-                { label: "Camera activates", done: cameraStatus === "active" || result !== null },
-                { label: "Image is clear", done: result === "pass" },
-                { label: "No distortion", done: result === "pass" },
-                { label: "No dead pixels", done: result === "pass" },
-              ].map((item) => (
-                <div key={item.label} className="flex items-center gap-2">
-                  <CheckCircle2 size={13} className={item.done ? "text-emerald-500" : "text-slate-300"} />
-                  <span className="text-xs text-slate-600">{item.label}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {result && (
-            <div className={`rounded-xl border p-4 ${
-              result === "pass" ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
-            }`}>
-              <div className="flex items-center gap-2">
-                {result === "pass" ? (
-                  <CheckCircle2 size={16} className="text-emerald-600" />
-                ) : (
-                  <XCircle size={16} className="text-red-600" />
-                )}
-                <span className={`text-sm ${result === "pass" ? "text-emerald-700" : "text-red-700"}`}>
-                  {result === "pass" ? "Webcam test passed" : "Webcam test failed"}
-                </span>
-              </div>
-            </div>
-          )}
         </div>
       </div>
 

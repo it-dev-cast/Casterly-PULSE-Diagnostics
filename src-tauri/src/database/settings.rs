@@ -69,6 +69,24 @@ pub fn create_default_settings(
 
         []
     ).unwrap();
+
+    // Supabase connection config (PRD §12). Seeded once; can be changed later
+    // via the settings table / future Settings screen.
+    conn.execute(
+        "
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('supabase_url', 'https://pesgdrfeauofhtbjqkbz.supabase.co')
+        ",
+        []
+    ).unwrap();
+
+    conn.execute(
+        "
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('supabase_key', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlc2dkcmZlYXVvZmh0Ympxa2J6Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NzgwNjg5NywiZXhwIjoyMDkzMzgyODk3fQ.pqikpnfrtSttjAS6Z4A-zyUyzTypveMEllxCuHVjqpE')
+        ",
+        []
+    ).unwrap();
 }
 
 pub fn get_setting(
@@ -151,6 +169,27 @@ pub fn set_setting(
         ]
 
     ).unwrap();
+}
+
+/// Insert or update a setting key (creates the row if it does not exist).
+pub fn upsert_setting(
+    conn: &Connection,
+    key: &str,
+    value: &str,
+)
+-> Result<(), String>
+{
+    conn.execute(
+        "
+        INSERT INTO settings (key, value)
+        VALUES (?1, ?2)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        ",
+        params![key, value],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
 }
 
 pub fn initialize_usb_id(

@@ -1,4 +1,5 @@
 pub mod save;
+pub mod persist;
 pub mod stats;
 pub mod browser;
 pub mod duplicate;

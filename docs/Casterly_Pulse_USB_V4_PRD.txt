@@ -1,0 +1,1371 @@
+CASTERLY
+PULSE USB V4
+Pulse of Every Laptop
+Product Requirements Document
+Enterprise Bootable Hardware Inspection Platform
+CASTERLY COMMAND CENTER  ·  ITAD Engineering Division
+Table of Contents
+Abbreviations
+Revision History
+V1.0 — UDiag Concept (Python / Bash)
+Initial bootable USB diagnostics concept using Python and Bash scripts
+Ubuntu 22.04 LTS base OS selected
+Hardware collection via: lscpu, dmidecode, smartctl, upower, lsusb, lspci
+LOT-based batch processing concept introduced
+Supabase proposed as cloud backend
+No GUI — terminal-only operation
+PRD V1.0: concept-level, no source code
+V2.0 — UDiag Full Developer Specification
+Complete rewrite of PRD as corporate DOCX with deep blue theme
+Ubuntu 22.04 LTS with Cubic ISO build procedure
+LOT Manager with JSON persistence and Python source code
+12 hardware collector modules documented with commands and source code
+Active diagnostics: CPU stress, memtester, SMART/NVMe, USB port check
+Grading engine: weighted scoring A/B/C/Scrap
+Supabase schema: 4 tables with SQL DDL
+Cloud sync: optional with offline queue fallback
+PyQt5 GUI specification across 6 screens
+V3.0 — UDiag Ubuntu 26.04 LTS + Mandatory Cloud Sync
+Base OS upgraded to Ubuntu 26.04 LTS (Questing Quokka), Python 3.13, kernel 6.14+
+Cloud synchronization changed from optional to MANDATORY and BLOCKING
+Admin override mechanism added: 4-digit PIN, reason text, audit log
+Section 4.1 architecture diagram updated with mandatory upload gate
+Screen 6 hard-block gate: HTTP 200/201 required before next device
+sync_status column added to Supabase devices table
+Abbreviations, Revision History, and Index sections added
+V4.0 — Casterly Pulse USB V4 (Tauri v2 + Rust + React 19) — Current
+Complete product rebrand: UDiag → Casterly Pulse USB V4
+Product tagline introduced: 'Pulse of Every Laptop'
+Architecture completely rewritten: Python/PyQt → Tauri v2 (Rust) + React 19 + TypeScript
+Backend language changed from Python to Rust for performance and memory safety
+Frontend changed from PyQt5 to React 19 + TypeScript + TailwindCSS v4 + ShadCN
+IPC bridge: Tauri invoke() replaces Python subprocess/socket communication
+SQLite (rusqlite v0.31 bundled) replaces plain JSON file storage
+9 parallel hardware collectors implemented in Rust: system, cpu, memory, storage, battery, bios, gpu, display, network, camera
+InspectionContext (React Context API) implemented as in-memory scan cache
+Scan caching: navigation between screens does NOT re-run collectors
+SMART architecture documented: dual-path NVMe (nvme smart-log JSON) + SATA (smartctl -a)
+Battery health formula: (full_charge_capacity_mwh / design_capacity_mwh) × 100
+Display collector: raw EDID binary parsing from /sys/class/drm/*/edid
+Network collector: MAC addresses from /sys/class/net/<iface>/address
+Camera collector: v4l2-ctl --list-devices, vendor detection from model string
+Manual grading: 7 physical components with multi-select defect types
+Functional tests: Keyboard (crossterm raw mode), Speaker (ffplay/aplay), Webcam (ffplay v4l2)
+Duplicate detection engine: serial number uniqueness check per LOT
+Upload queue: SQLite upload_queue table, status: PENDING/UPLOADED/FAILED
+Application screen count expanded to 20+ including: Dashboard, LOT Management, Inspector Management, System Scan, Hardware Inventory, Manual Grading, Keyboard/Speaker/Webcam/Touchpad/Battery tests, Final Review, Inspection History, Sync Status, Upload Queue, Duplicate Detection
+Responsive layout: compact (<1600px) / standard (<1920px) / full (≥1920px)
+WorkflowSidebar with stage progression tracking (pending/active/passed/failed)
+1. Executive Summary
+Casterly Pulse USB V4 is an enterprise-grade, bootable hardware inspection platform engineered for high-volume ITAD (IT Asset Disposition) workflows. It enables field technicians and warehouse operators to perform fully automated, repeatable hardware diagnostics and physical grading of laptops without installing any software on the device under inspection.
+The platform runs from a custom bootable USB drive built on Ubuntu 26.04 LTS. The application is built with Tauri v2 — a framework combining a Rust backend with a React TypeScript frontend. All hardware data is collected through native Linux kernel interfaces and command-line tools. Results are stored in an embedded SQLite database and queued for cloud synchronization to Supabase.
+1.1 Product Identity
+1.2 Target Markets
+ITAD companies processing end-of-life corporate laptop fleets
+Refurbishers grading and valuing devices for resale
+OEM repair and service centers performing intake diagnostics
+Enterprise asset recovery and lease return processing
+Reverse logistics companies managing returned electronics
+Electronics recycling centers requiring hardware condition documentation
+Insurance and warranty assessment companies
+1.3 Core Value Proposition
+2. Scope & Boundaries
+2.1 In Scope — V4.0
+Bootable USB environment: Ubuntu 26.04 LTS with Tauri v2 Rust+React application auto-launched on boot
+LOT management: create, resume, complete, and switch LOTs with session persistence
+Inspector management: named technician accounts for audit trail
+Automated hardware collection: 9 parallel Rust collectors covering System, CPU, Memory, Storage, Battery, BIOS, GPU, Display, Network, Camera
+SMART health assessment: NVMe via nvme smart-log JSON + SATA via smartctl -a
+Manual physical grading: 7 components with multi-select defect types
+Functional tests: Keyboard (crossterm raw mode key capture), Speaker (ffplay/aplay), Webcam (ffplay v4l2), Touchpad, Battery Assessment
+Inspection save: UUID + JSON-serialized full inspection to SQLite
+Duplicate detection: serial number uniqueness enforcement per LOT
+Upload queue: SQLite-backed queue with status tracking (PENDING/UPLOADED/FAILED)
+Cloud sync: Supabase REST API upload (future — queue built now)
+Inspection history: browse, view, delete historical records
+Sync status dashboard: real-time queue visibility
+Responsive layout: compact/standard/full breakpoints (1600/1920px)
+2.2 Out of Scope — V4.0
+Data erasure / wiping — separate Casterly Wipe module
+BIOS password bypass or firmware modification
+Windows or macOS support — Linux only
+Network boot (PXE) — USB only in V4
+Real-time cloud dashboard — Supabase web portal (V5 roadmap)
+AI-assisted grading and failure prediction (V5 roadmap)
+Remote diagnostics and endpoint agent (V5 roadmap)
+3. Stakeholders & User Personas
+3.1 Primary — Field Technician (Inspector)
+Processes 50–200 devices per day at a customer site or warehouse. Must operate Pulse with minimal training. Boots the USB, logs in, selects the active LOT, runs the scan, completes physical grading and functional tests, and saves the record. Primarily concerned with throughput and accuracy.
+3.2 Secondary — Operations Manager
+Reviews batch completion status, grading distribution, upload queue health, and LOT summaries from the cloud dashboard. Does not interact with the USB tool directly. Requires reliable, audit-ready data from every inspection.
+3.3 Tertiary — Software Engineer / Rust Developer
+This document is the primary technical specification for the Rust and React engineers building Pulse V4. All architecture decisions, collector implementations, database schemas, Tauri IPC commands, screen flows, and data models are specified herein with sufficient detail for development without further clarification.
+3.4 Enterprise Customer
+Receives inspection reports for their device fleet. Requires consistent, standardized data fields matching industry asset management formats. Expects per-serial, per-LOT reporting with full hardware specifications and grading outcomes.
+4. System Architecture
+4.1 Overview — Tauri v2 Desktop Architecture
+Casterly Pulse USB V4 is built on Tauri v2, a framework that embeds a Rust binary as the application backend and renders a React TypeScript web application in a platform-native WebView. The two layers communicate exclusively via Tauri's invoke() IPC bridge — the frontend calls named Rust commands and receives serialized JSON responses.
+4.2 Technology Stack
+4.3 Tauri IPC Bridge — Rust Commands
+All communication between the React frontend and the Rust backend flows through Tauri's invoke() IPC mechanism. The frontend calls a named command string; Tauri routes it to the corresponding #[tauri::command] function in Rust. The result is serialized as JSON and returned to the frontend as a TypeScript Promise.
+4.4 Parallel Scan Architecture
+The SystemScan screen fires all 9 invoke() calls concurrently on component mount — none await the previous. Each call resolves or rejects independently, updating a local state slice and incrementing a completedCalls counter. When completedCalls reaches the total (currently 9), the workflow auto-advances. This parallel architecture means scan time is bounded by the slowest single collector, not the sum of all.
+4.5 Scan Caching — InspectionContext
+InspectionContext is a React Context provider wrapping the entire application. It stores scan results, scan state, and inspection metadata across all workflow screens. When the user navigates back to SystemScan from a later screen, the component detects data.scanCompleted === true, restores all state from context, and sets completedCalls to 9 immediately — skipping all invoke() calls. This ensures collectors never run twice per inspection.
+// InspectionContext.tsx — shared data structure across all workflow steps
+interface InspectionData {
+  systemInfo:   SystemInfo | null;    // From get_system_info
+  cpuInfo:      CpuInfo | null;       // From get_cpu_info
+  memoryInfo:   MemoryModule[];       // From get_memory_info (array)
+  storageInfo:  StorageDevice[];      // From get_storage_info (array)
+  batteryInfo:  BatteryInfo | null;   // From get_battery_info (null = no battery)
+  networkInfo:  NetworkInfo | null;   // From get_network_info
+  displayInfo:  DisplayInfo | null;   // From get_display_info
+  gpuInfo:      GpuInfo[] | null;     // From get_gpu_info (array)
+  cameraInfo:   CameraInfo | null;    // From get_camera_info
+  scanCompleted:bool;                 // Guard: true = use cached, skip collectors
+  scanTimestamp:number | null;        // Unix ms timestamp of scan
+  inspectionStartTime: number | null; // Unix ms of workflow start
+}
+5. Rust Project Structure
+5.1 Directory Layout
+The Rust application lives entirely under src-tauri/src/. Each module has a focused responsibility. The crate type is staticlib + cdylib + rlib to support Tauri's compilation requirements across target platforms.
+src-tauri/
+├── Cargo.toml                # Rust dependencies (tauri v2, rusqlite, serde, uuid, chrono, anyhow, crossterm)
+├── build.rs                  # tauri-build — generates capability schemas
+├── capabilities/
+│   └── default.json          # Tauri capability declarations (IPC permissions)
+├── gen/schemas/              # Auto-generated: acl-manifests, capabilities, desktop/linux schema
+└── src/
+    ├── main.rs               # Binary entry point — calls lib::run()
+    ├── lib.rs                # Tauri builder + all #[tauri::command] registrations
+    │
+    ├── models/               # Pure data structures (Serialize + Deserialize)
+    │   ├── mod.rs
+    │   ├── device.rs         # CpuInfo, MemoryModule, StorageDevice, SystemInfo, BatteryInfo,
+    │   │                     # BiosInfo, GpuInfo, DisplayInfo, NetworkInfo, CameraInfo,
+    │   │                     # ManualGrading, SpeakerTest, WebcamTest, KeyboardTest,
+    │   │                     # BatteryHealth, StorageHealth
+    │   ├── inventory.rs      # DeviceInventory — aggregate of all collector outputs
+    │   ├── run.rs            # InspectionRun — complete inspection record (UUID + inventory + tests)
+    │   └── settings.rs       # Application settings model
+    │
+    ├── inventory/            # Hardware collector modules (passive data gathering)
+    │   ├── mod.rs
+    │   ├── collector.rs      # collect_all() — calls all collectors, returns DeviceInventory
+    │   ├── system.rs         # /sys/devices/virtual/dmi/id/ + dmidecode fallback
+    │   ├── cpu.rs            # lscpu + /proc/cpuinfo + scaling_cur_freq
+    │   ├── memory.rs         # sudo dmidecode -t memory — per-DIMM parser
+    │   ├── storage.rs        # lsblk + sudo smartctl -a — NVMe + SATA
+    │   ├── battery.rs        # /sys/class/power_supply/BAT0/ — energy + charge modes
+    │   ├── bios.rs           # sudo dmidecode -s bios-vendor/version/release-date
+    │   ├── gpu.rs            # lspci — VGA/3D Controller entries
+    │   ├── display.rs        # /sys/class/drm/*/edid — raw EDID binary parsing
+    │   ├── network.rs        # lspci + /sys/class/net/ + hciconfig
+    │   └── camera.rs         # v4l2-ctl --list-devices
+    │
+    ├── diagnostics/          # Active functional tests (require technician confirmation)
+    │   ├── mod.rs
+    │   ├── keyboard.rs       # crossterm raw mode — capture unique keystrokes, Q×3 exit
+    │   ├── speaker.rs        # ffplay/aplay — play speaker_test.wav left/right/stereo
+    │   └── webcam.rs         # ffplay -f v4l2 -i /dev/video0 — live preview
+    │
+    ├── grading/              # Physical condition assessment
+    │   ├── mod.rs
+    │   └── manual_grading.rs # 7-component grading: LCD, top cover, bezel, palmrest,
+    │                         # bottom cover, keyboard, touchpad + defect types
+    │
+    ├── health/               # Health computation modules
+    │   ├── mod.rs
+    │   ├── battery_health.rs # (full_charge / design_capacity) × 100
+    │   └── storage_health.rs # nvme smart-log percentage_used → 100 - wear%
+    │
+    ├── inspection/           # Inspection lifecycle management
+    │   ├── mod.rs
+    │   ├── manager.rs        # CLI menu: view / delete by serial / duplicate report / cleanup
+    │   ├── save.rs           # collect_all() + grading + tests → InspectionRun → SQLite + upload_queue
+    │   ├── browser.rs        # show_all() — display all inspections from SQLite
+    │   ├── duplicate.rs      # serial_exists() — check serial+lot uniqueness
+    │   ├── duplicate_report.rs # Show duplicate records grouped by serial
+    │   ├── cleanup_duplicates.rs # Delete duplicate records keeping latest
+    │   ├── delete.rs         # Delete inspection by ID
+    │   ├── delete_by_serial.rs   # Delete all records for a serial
+    │   └── stats.rs          # Count/summary statistics for active LOT
+    │
+    ├── lot/                  # LOT session management
+    │   ├── mod.rs
+    │   ├── model.rs          # Lot struct: lot_name, customer, location, inspection_date, status
+    │   ├── repository.rs     # create_lot(), get_active_lot() — SQLite CRUD
+    │   └── menu.rs           # CLI LOT selection menu
+    │
+    ├── database/             # Database initialization and settings
+    │   ├── mod.rs
+    │   ├── sqlite.rs         # initialize_database() — creates all 4 tables
+    │   └── settings.rs       # Settings key-value store operations
+    │
+    └── upload/               # Cloud synchronization queue
+        ├── mod.rs
+        ├── queue.rs          # add_to_queue() — INSERT into upload_queue
+        └── stats.rs          # Queue statistics: pending count, last upload time
+5.2 Key Rust Dependencies (Cargo.toml)
+6. Frontend Architecture (React 19 + TypeScript)
+6.1 Directory Layout
+src/
+├── main.tsx                   # ReactDOM.createRoot — mounts App into index.html #root
+├── vite-env.d.ts              # Vite environment type declarations
+│
+├── app/
+│   ├── App.tsx                # Root component: screen routing + layout management
+│   │                          # currentScreen state, stage progression, responsive breakpoints
+│   │
+│   ├── context/
+│   │   └── InspectionContext.tsx  # Global scan data store (InspectionData interface)
+│   │                              # Provides: data, setData, resetInspection()
+│   │
+│   ├── components/
+│   │   ├── Header.tsx             # Top navigation bar — LOT name, inspector, screen title
+│   │   ├── WorkflowSidebar.tsx    # Left sidebar — stage list with pending/active/passed/failed
+│   │   ├── SummaryPanel.tsx       # Right collapsible panel — live inspection summary
+│   │   │
+│   │   ├── screens/               # One file per application screen
+│   │   │   ├── StartupHome.tsx    # Landing screen — new inspection / history / settings
+│   │   │   ├── Dashboard.tsx      # Main dashboard — LOT summary, recent activity
+│   │   │   ├── LOTManagement.tsx  # Create/resume/complete LOT sessions
+│   │   │   ├── InspectorManagement.tsx  # Add/select named inspectors
+│   │   │   ├── ActiveLOTSummary.tsx     # Current LOT: device count, grade distribution
+│   │   │   ├── SystemScan.tsx     # Parallel 9-collector scan + 10-card display
+│   │   │   ├── HardwareInventory.tsx    # Detailed per-component hardware tables
+│   │   │   ├── ManualGrading.tsx  # 7-component physical grading with defect types
+│   │   │   ├── KeyboardTest.tsx   # Interactive key capture — crossterm test results
+│   │   │   ├── SpeakerTest.tsx    # Speaker test — left/right/stereo audio playback
+│   │   │   ├── WebcamTest.tsx     # Webcam live preview — ffplay v4l2
+│   │   │   ├── TouchpadTest.tsx   # Touchpad gesture test
+│   │   │   ├── BatteryAssessment.tsx    # Battery health display + charge test
+│   │   │   ├── FinalReview.tsx    # Summary before save — all data confirmation
+│   │   │   ├── InspectionComplete.tsx   # Post-save confirmation + next action
+│   │   │   ├── InspectionSaveConfirmation.tsx  # Duplicate warning + save confirmation
+│   │   │   ├── InspectionHistory.tsx    # Browse past inspections from SQLite
+│   │   │   ├── InspectionManager.tsx    # Admin: view/delete/cleanup records
+│   │   │   ├── DuplicateDetection.tsx   # Show duplicate serial numbers in LOT
+│   │   │   ├── SyncStatus.tsx     # Upload queue status — pending/uploaded/failed
+│   │   │   └── UploadQueue.tsx    # Detailed queue view with retry controls
+│   │   │
+│   │   ├── ui/                    # ShadCN component library (40+ components)
+│   │   │   ├── button.tsx, card.tsx, badge.tsx, dialog.tsx
+│   │   │   ├── accordion.tsx, alert.tsx, alert-dialog.tsx
+│   │   │   ├── table.tsx, tabs.tsx, select.tsx, input.tsx
+│   │   │   ├── progress.tsx, slider.tsx, switch.tsx, checkbox.tsx
+│   │   │   ├── sidebar.tsx, scroll-area.tsx, separator.tsx
+│   │   │   └── [30+ more Radix UI primitives]
+│   │   │
+│   │   └── figma/
+│   │       └── ImageWithFallback.tsx  # Image component with error fallback
+│   │
+│   └── backup/                    # Previous App.css and App.tsx (reference only)
+│
+└── styles/
+    ├── globals.css                # Global CSS reset and base styles
+    ├── index.css                  # Root CSS variables
+    ├── tailwind.css               # Tailwind v4 directives (@import)
+    ├── theme.css                  # Design token overrides
+    └── fonts.css                  # Font-face declarations
+6.2 Application Routing — Screen State Machine
+App.tsx maintains a currentScreen string state that controls which screen component renders. Screen transitions are managed by goToStage() and advanceStage() functions. The STAGE_ORDER array defines the linear workflow progression within an inspection. Navigation outside the workflow (history, settings, LOT management) uses direct goToStage() calls.
+// App.tsx — workflow stage order for a single inspection
+const STAGE_ORDER = [
+  'system-scan',          // Step 1: parallel hardware collection
+  'hardware-inventory',   // Step 2: detailed component review
+  'manual-grading',       // Step 3: physical condition grading
+  'speaker-test',         // Step 4: audio functional test
+  'webcam-test',          // Step 5: camera functional test
+  'keyboard-test',        // Step 6: keyboard completeness test
+  'touchpad-test',        // Step 7: touchpad gesture test
+  'battery-assessment',   // Step 8: battery health review
+  'final-review',         // Step 9: full inspection summary
+  'inspection-complete',  // Step 10: save + next device
+];
+6.3 Responsive Layout Breakpoints
+7. Application Flow & Screen Specifications
+7.1 High-Level Workflow
+7.2 Screen Specifications
+StartupHome
+Landing screen displayed after Tauri application launches. Shows the Casterly Pulse branding, current LOT status (active/none), total devices processed today, and navigation buttons: New Inspection, View History, LOT Management, Sync Status. Entry point into all application areas.
+Dashboard
+Main operational dashboard for inspectors during a session. Displays: active LOT name, customer, device count, pass/fail distribution (recharts donut or bar chart), recent inspection list with grades, and quick-action buttons for common tasks.
+LOT Management (LOTManagement.tsx)
+Manages inspection batch sessions. Fields captured: LOT Name (e.g., CLY-LOT40), Customer Name, Location, Inspection Date, Status (ACTIVE/COMPLETED/CANCELLED). SQLite operations: INSERT into lots, UPDATE status, SELECT WHERE status='ACTIVE'. Active LOT name stored in settings table as key 'active_lot'.
+Inspector Management (InspectorManagement.tsx)
+Maintains a list of named inspectors. Each inspection record stores the inspector name for audit trail. Inspectors can be added, selected as active, and deactivated. Inspector name flows into InspectionRun.inspector field.
+Active LOT Summary (ActiveLOTSummary.tsx)
+Real-time view of the current LOT's progress. Shows: device count, grade distribution (A+/A/B/C/D/Reject), completion percentage against target, last inspection timestamp, upload queue depth for this LOT.
+System Scan (SystemScan.tsx)
+Core hardware collection screen. Fires 9 parallel Tauri invoke() calls on mount. Renders 10 InfoCard tiles: System, CPU, Memory, Storage, Battery, Display, GPU, Network, Audio, Camera. Each card shows 'Scanning...' until its collector resolves. Progress badge shows 'Scanning... N/9'. On completion: 'Scan Complete — Auto advancing...'. Re-scan button resets the module-level scanAlreadyCompleted guard and reloads.
+Hardware Inventory (HardwareInventory.tsx)
+Detailed display of all collected hardware data. Reads exclusively from InspectionContext (no new invoke() calls). Organized into expandable sections per component. Allows technician to verify collected data before grading.
+Manual Grading (ManualGrading.tsx)
+Grade calculation: completion counter shows N/7 graded. Cannot proceed to next step until all 7 are graded. Defect multi-select appears only when a component is marked FAIL. All grades and defect selections stored in ManualGrading struct.
+Keyboard Test (KeyboardTest.tsx)
+Interactive keyboard completeness test. Backend: crossterm raw mode captures every keystroke using crossterm Event::Key. Unique keys tracked in a HashSet. Exit condition: Q key pressed 3 times within 1 second intervals. After test, technician marks PASS or FAIL. Result stored as KeyboardTest { result, unique_keys }.
+Speaker Test (SpeakerTest.tsx)
+Audio output test. Backend: plays assets/speaker_test.wav using ffplay (preferred) or aplay (fallback). Audio sequence: 0–5 sec = left speaker, 5–10 sec = right speaker, 10–20 sec = stereo. Technician confirms PASS or FAIL after playback. Uses command_exists('ffplay') to select player.
+Webcam Test (WebcamTest.tsx)
+Camera functional test. Backend: ffplay -f v4l2 -i /dev/video0 opens live preview window. Technician views camera output and closes the window when satisfied. Confirms PASS or FAIL. Result stored as WebcamTest { result }.
+Touchpad Test (TouchpadTest.tsx)
+Touchpad gesture and click test. Technician performs: tap, two-finger scroll, right-click, swipe gestures. Frontend captures pointer events and validates expected interactions. Technician confirms PASS or FAIL.
+Battery Assessment (BatteryAssessment.tsx)
+Displays battery health data from InspectionContext.batteryInfo. Shows: health percentage (full_charge / design × 100), design capacity (Wh), current full charge (Wh), current charge level (Wh), cycle count, voltage (mV), status (Charging/Discharging/Full), manufacturer, model, serial, technology. Technician reviews and confirms. Future: charge cycle test.
+Final Review (FinalReview.tsx)
+Pre-save summary screen. Aggregates all collected data: system identity, hardware specs from context, manual grades with defect details, functional test results, battery health. Technician performs final verification. Duplicate detection runs here: inspection/duplicate.rs checks if serial_number + lot_name combination already exists in inspections table. If duplicate found, routes to InspectionSaveConfirmation.tsx.
+Inspection Save Confirmation (InspectionSaveConfirmation.tsx)
+Warning screen when duplicate serial detected. Shows: existing record details, new inspection details, options: [Save Anyway] which proceeds to save, or [Cancel] which returns to FinalReview. Prevents accidental duplicate LOT submissions.
+Inspection Complete (InspectionComplete.tsx)
+Post-save confirmation. Displays: assigned UUID, inspection timestamp, LOT name, inspector, device serial, final grade. Options: [Next Device] — resets InspectionContext and returns to SystemScan for a new inspection under the same LOT. [View LOT Summary] — navigates to ActiveLOTSummary. [End Session] — marks LOT complete and returns to StartupHome.
+Inspection History (InspectionHistory.tsx)
+Browse all inspections from SQLite inspections table. Filterable by LOT name, serial number, date range, upload status. Each row shows: UUID, serial, manufacturer, model, grade, inspector, timestamp, upload status badge (PENDING/UPLOADED). Click to expand full JSON record view.
+Sync Status (SyncStatus.tsx)
+Upload queue dashboard. Shows: total pending count, total uploaded count, total failed count. Progress indicators per queue item. Retry button for failed uploads. Automatic retry on reconnection. Reads from upload_queue SQLite table.
+Upload Queue (UploadQueue.tsx)
+Detailed upload queue view. Table: inspection_uuid, status, retry_count, created_at, uploaded_at. Filter by status. Bulk retry all failed. Individual record retry. Shows Supabase endpoint target. Network connectivity indicator.
+Duplicate Detection (DuplicateDetection.tsx)
+Administrative view showing all duplicate serial numbers across all LOTs. Groups by serial number, shows count of duplicate records, allows admin to select which records to keep or delete. Uses cleanup_duplicates::run() to execute deletions.
+8. Hardware Collectors — Deep Specification
+8.1 Collector Architecture
+Each hardware collector is a Rust module in src-tauri/src/inventory/. All collectors implement a collect() function returning Result<T>. The master collector (collector.rs) calls all 9 in sequence via collect_all() → DeviceInventory, but the Tauri command layer calls each individually to support the parallel invoke() pattern from the frontend.
+8.2 System Collector (inventory/system.rs)
+Data Sources
+Strategy: sysfs paths are tried first (no root required, instant). If empty (permission denied or unavailable), falls back to dmidecode with sudo. This dual-path approach ensures maximum compatibility across OEM BIOS implementations.
+8.3 CPU Collector (inventory/cpu.rs)
+Data Sources and Fields
+8.4 Memory Collector (inventory/memory.rs)
+Calls sudo dmidecode -t memory and parses the multi-block output. Each 'Memory Device' section in the output represents one physical slot. The parser maintains state across lines, flushing a complete MemoryModule struct when the next 'Memory Device' header is encountered.
+Per-DIMM Fields
+8.5 Storage Collector (inventory/storage.rs)
+Primary discovery via lsblk -d -b -P -o NAME,SIZE,MODEL,SERIAL,TRAN. The -P flag outputs key=value pairs; the -d flag shows disks only (no partitions); -b outputs sizes in bytes. USB transport devices are filtered out (boot media exclusion). NVMe vs SATA detection uses device path (/dev/nvmeX) and transport field.
+Boot Media Exclusion
+// storage.rs — USB transport exclusion
+if transport.to_lowercase() == "usb" {
+    continue;  // Skip USB devices — prevents testing the boot USB itself
+}
+// Also skip: loop, ram, sr (loop devices, ram disks, optical drives)
+if name.starts_with("loop") || name.starts_with("ram") || name.starts_with("sr") {
+    continue;
+}
+SMART Data Architecture — Dual Path
+Storage health data is sourced from sudo smartctl -a <device> for all drive types. The parsing extracts different fields depending on whether the drive is NVMe or SATA:
+8.6 Battery Collector (inventory/battery.rs)
+Scans /sys/class/power_supply/ for directories starting with 'BAT'. Reads Linux battery sysfs attributes directly — no external tools required. Supports two battery reporting modes found across different OEMs:
+Unit Normalization: if value > 500,000 → divide by 100,000.0 (µWh → Wh). Otherwise divide by 1,000.0 (mWh → Wh). This heuristic handles the majority of OEM reporting variations seen in ITAD fleets.
+// battery.rs — Health calculation
+let health_percent = if design_capacity > 0 {
+    (full_capacity as f64 / design_capacity as f64) * 100.0
+} else { 0.0 };
+// health_percent = 74% means battery holds 74% of original design capacity
+Battery Fields
+8.7 BIOS Collector (inventory/bios.rs)
+Calls sudo dmidecode -s <field> for each BIOS attribute. The -s flag returns a single string value for the specified DMI string keyword — simpler and faster than parsing the full -t bios output.
+8.8 GPU Collector (inventory/gpu.rs)
+Parses lspci output for lines containing 'VGA compatible controller' or '3D controller'. Extracts vendor (Intel/AMD/NVIDIA from string match), full model string, and PCI bus address (first whitespace token).
+// gpu.rs — vendor detection from PCI description string
+if line.contains("Intel") { vendor = "Intel" }
+else if line.contains("AMD") { vendor = "AMD" }
+else if line.contains("NVIDIA") { vendor = "NVIDIA" }
+8.9 Display Collector (inventory/display.rs)
+Scans /sys/class/drm/ for connector directories containing 'eDP' in the name (embedded DisplayPort — the internal laptop panel interface). Reads the raw EDID binary from <connector>/edid. Parses EDID bytes directly in Rust — no external tools.
+EDID Binary Parsing
+Manufacturer ID Lookup
+8.10 Network Collector (inventory/network.rs)
+Combines lspci output for human-readable adapter names with /sys/class/net/ directory enumeration for interface names and MAC addresses. Bluetooth detection uses hciconfig command existence as proxy.
+8.11 Camera Collector (inventory/camera.rs)
+Calls v4l2-ctl --list-devices which outputs camera device names followed by their /dev/videoX paths. Parses lines containing 'Webcam', 'Camera', or 'Integrated'. First /dev/video* path after a device name is captured as the device node.
+Vendor Detection (from model string)
+9. Functional Diagnostics Tests
+9.1 Test Architecture
+Functional tests are active tests requiring hardware interaction and technician judgment. Unlike passive collectors which run automatically, each test requires a technician to observe the hardware behavior and confirm PASS or FAIL. Results are stored in InspectionRun alongside the passive inventory data.
+9.2 Keyboard Test (diagnostics/keyboard.rs)
+Enables crossterm terminal raw mode to intercept all keystrokes before the OS processes them. A HashSet tracks unique keys seen. The crossterm event poll loop runs on 100ms intervals. Key names are normalized: Char(c) → character string, Enter → 'ENTER', Tab → 'TAB', Backspace → 'BACKSPACE', Esc → 'ESC', others → Debug format.
+Exit Protocol
+Q key pressed 3 times, each press within 1 second of the previous
+q_count resets to 0 if any non-Q key is pressed or if >1 second elapses between Q presses
+Prevents accidental exit from normal typing
+// keyboard.rs — exit detection
+if c == 'q' {
+    let now = Instant::now();
+    if let Some(last) = last_q_time {
+        if now.duration_since(last) > Duration::from_secs(1) { q_count = 0; }
+    }
+    q_count += 1;
+    last_q_time = Some(now);
+    if q_count >= 3 { break; }  // Exit test
+} else { q_count = 0; last_q_time = None; }
+9.3 Speaker Test (diagnostics/speaker.rs)
+Detects audio player availability using which command. Prefers ffplay for its no-display mode and autoexit flag. Falls back to aplay for environments without ffmpeg installed. Audio file: assets/speaker_test.wav — a stereo WAV designed to test left and right channel routing.
+// speaker.rs — player selection
+let player = if command_exists("ffplay") { "ffplay" } else { "aplay" };
+// ffplay command: -nodisp (no video window) -autoexit (exit when audio ends)
+Command::new("ffplay").args(["-nodisp", "-autoexit", "assets/speaker_test.wav"]);
+// aplay command: simple WAV playback
+Command::new("aplay").arg("assets/speaker_test.wav");
+9.4 Webcam Test (diagnostics/webcam.rs)
+// webcam.rs — v4l2 live preview via ffplay
+Command::new("ffplay").args(["-f", "v4l2", "-i", "/dev/video0"])
+// Opens a live camera preview window
+// Technician observes camera output, closes window when done
+// Then confirms PASS or FAIL via stdin
+10. Manual Grading System
+10.1 Grading Philosophy
+Physical condition grading in Pulse V4 captures the cosmetic and mechanical state of the device. Each of the 7 graded components receives an independent PASS or FAIL judgment. When FAIL is selected, multi-select defect type buttons appear, allowing the technician to record specific defect categories. This structure enables downstream systems to generate objective refurbishment cost estimates.
+10.2 Component Grading Matrix
+10.3 Overall Grade Rules
+11. SQLite Database Schema
+11.1 Database Overview
+SQLite is used as the embedded database for Pulse V4. The database file is named udiag.db and is opened via rusqlite::Connection::open('udiag.db'). With the 'bundled' feature flag, rusqlite compiles SQLite directly into the Rust binary — no external libsqlite3.so dependency on the target machine.
+11.2 Table: lots
+-- Active LOT query
+SELECT lot_name, customer, location, inspection_date, status
+FROM lots WHERE status='ACTIVE' LIMIT 1;
+11.3 Table: inspections
+The json_data column stores the complete InspectionRun struct as a formatted JSON string. This includes all hardware inventory, manual grading, test results, and metadata. The choice to store as JSON (rather than normalized columns) allows schema flexibility as new hardware categories are added without database migrations.
+11.4 Table: upload_queue
+-- add_to_queue() — called immediately after every inspection save
+INSERT INTO upload_queue (inspection_uuid, status, retry_count, created_at)
+VALUES (?1, 'PENDING', 0, ?2);
+11.5 Table: settings
+-- Key used by LOT management
+UPDATE settings SET value = ? WHERE key = 'active_lot';
+11.6 InspectionRun — JSON Schema
+The InspectionRun struct is the complete data model for one inspection. It is serialized to JSON and stored in inspections.json_data. It is also the payload uploaded to Supabase.
+{
+  "uuid":          "a3f92b1c-...",           // UUID v4
+  "usb_id":        "CASTERLY-USB-001",        // USB drive identifier
+  "inspector":     "Ravi Kumar",
+  "lot_name":      "CLY-LOT40",
+  "timestamp":     "19/05/2026 11:11:55",
+  "uploaded":      false,
+  "battery_health": 74.2,                     // Derived from battery collector
+  "grading": {
+    "lcd_status":           "PASS",
+    "lcd_defects":          [],
+    "top_cover_status":     "FAIL",
+    "bezel_status":         "PASS",
+    "palmrest_status":      "PASS",
+    "bottom_cover_status":  "PASS",
+    "keyboard_status":      "PASS",
+    "touchpad_status":      "PASS",
+    "remarks":              "Small dent on top cover corner"
+  },
+  "speaker_test":  { "result": "PASS" },
+  "webcam_test":   { "result": "PASS" },
+  "keyboard_test": { "result": "PASS", "unique_keys": 78 },
+  "inventory": {
+    "system":   { "manufacturer": "HP", "model": "ProBook 440 G8", "serial_number": "5CD124NJWZ", "uuid": "..." },
+    "cpu":      { "manufacturer": "GenuineIntel", "model": "11th Gen Intel Core i5-1135G7 @ 2.40GHz",
+                  "architecture": "x86_64", "sockets": 1, "cores_per_socket": 4, "threads": 8,
+                  "max_speed_mhz": 4200, "min_speed_mhz": 400, "current_speed_mhz": 2400,
+                  "cache_l1": "192 KiB", "cache_l2": "5 MiB", "cache_l3": "8 MiB",
+                  "virtualization": true, "hyper_threading": true, "flags": ["sse4_2","avx2",...] },
+    "memory":   [ { "slot": "Bottom-Slot 1", "bank_locator": "Controller0ChannelADimm0",
+                    "size_mb": 8192, "memory_type": "DDR4", "manufacturer": "Micron",
+                    "serial": "2EED4EBA", "part_number": "4ATF1G64HZ-3G2E2",
+                    "speed_mhz": 3200, "is_empty": false, "is_onboard": false } ],
+    "storage":  [ { "slot": "NVMe1", "device": "/dev/nvme0n1", "model": "NVMe SSD 512GB",
+                    "serial": "AA20250513512G362300", "firmware": "SN22237", "size_gb": 512.0,
+                    "transport": "nvme", "storage_type": "NVMe", "health_percent": 95,
+                    "temperature_c": 38, "power_on_hours": 1243, "power_cycles": 856,
+                    "media_errors": 0, "critical_warning": null } ],
+    "battery":  { "manufacturer": "HP", "model": "Primary", "serial_number": "04111",
+                  "technology": "Li-ion", "status": "Discharging", "cycle_count": 121,
+                  "design_capacity_mwh": 3950000, "full_charge_capacity_mwh": 2910000,
+                  "current_capacity_mwh": 1800000, "voltage_mv": 11400,
+                  "design_capacity_wh": 39.5, "full_charge_capacity_wh": 29.1,
+                  "current_capacity_wh": 18.0, "health_percent": 73.67 },
+    "bios":     { "vendor": "HP", "version": "T70 Ver. 01.23.00", "release_date": "11/06/2025" },
+    "gpu":      [ { "vendor": "Intel", "model": "Intel TigerLake-LP GT2 [Iris Xe]",
+                    "bus_address": "00:02.0", "driver": "" } ],
+    "display":  { "manufacturer": "AU Optronics", "model": "E8C8", "panel_part_number": "B140HAN",
+                  "resolution": "1920x1080", "size_inches": 14.0 },
+    "network":  { "wifi": "Network controller: Intel Wi-Fi 6 AX201",
+                  "wifi_friendly": "Intel Wi-Fi 6 AX201",
+                  "wifi_mac": "64:bc:58:68:57:31",
+                  "ethernet": "Ethernet controller: Realtek PCIe GbE",
+                  "ethernet_friendly": "Realtek PCIe GbE",
+                  "ethernet_mac": "48:9e:bd:2d:7d:6c",
+                  "bluetooth": true }
+  }
+}
+12. Cloud Synchronization Architecture
+12.1 Current State (V4.0)
+The upload queue infrastructure is fully implemented in V4.0. Every saved inspection is immediately added to the upload_queue table with status PENDING. The actual HTTP upload to Supabase is queued for implementation in the sync engine module (src-tauri/src/upload/). The tokio async runtime is included in Cargo.toml for this future work.
+12.2 Planned Supabase Schema
+12.3 Sync Engine Design (Future)
+13. Performance Requirements
+13.1 Target Metrics
+13.2 Caching Strategy
+InspectionContext stores all scan results in React memory — zero re-fetch on navigation
+Module-level scanAlreadyCompleted flag prevents React Strict Mode double-invoke
+Scan restoration: data.scanCompleted === true → setCompletedCalls(9) immediately
+SQLite uses WAL mode for concurrent read performance (future: multiple USB instances)
+Upload queue batching: future implementation will batch up to 10 records per HTTP request
+14. Security Architecture
+14.1 Security Model
+14.2 Tauri Security Configuration
+// src-tauri/tauri.conf.json — V4 security settings
+{
+  "app": {
+    "security": {
+      "csp": null  // V4: CSP to be configured before production
+    }             // Production: restrict to self + tauri: + ipc: origins
+  }
+}
+// capabilities/default.json — Tauri IPC permission declarations
+// Controls which frontend pages can call which Tauri commands
+// V4: all commands accessible from default window — lock down before production
+15. User Experience Design
+15.1 Design Principles
+Kiosk-first: the application runs fullscreen in a controlled environment — all navigation is within the app
+Dark-neutral theme: slate/white backgrounds with blue accent — professional, reduces eye strain in warehouse lighting
+Card-based layout: each hardware category is an independent InfoCard with consistent header/body structure
+Status badges: color-coded (emerald=OK, amber=warn, red=critical) for instant visual triage
+Progressive disclosure: defect sub-types appear only when a component is marked FAIL
+Auto-advance: SystemScan auto-advances without button press when all collectors complete
+Large touch targets: all interactive elements ≥ 44px for warehouse glove compatibility
+Keyboard navigation: all primary actions accessible without mouse
+15.2 InfoCard Design System
+The InfoCard component is the primary data display unit across the application. Used in SystemScan for all 10 hardware categories. Structure:
+Header: Lucide icon (15px) + category title (text-sm) + status badge (text-[10px] rounded-full)
+Body: key-value rows — label (text-xs text-slate-500) + value (text-xs text-slate-800 font-medium)
+Border: border-slate-200 rounded-lg
+Header background: bg-slate-50
+Status: ok=emerald, warn=amber, critical=red
+Loading state: 'Scanning...' placeholder text in value position
+15.3 WorkflowSidebar Stage States
+16. USB Build & Deployment
+16.1 Build Architecture
+The bootable USB is built using Cubic to customize an Ubuntu 26.04 LTS ISO. The Tauri application binary + React frontend bundle are embedded in the ISO. A systemd service auto-launches the application on graphical login. The ubuntu user is configured for auto-login to eliminate technician boot interaction.
+16.2 Build Steps
+Install Cubic on a build workstation: sudo apt-add-repository ppa:cubic-wizard/release && sudo apt install cubic
+Download Ubuntu 26.04 LTS Desktop ISO from ubuntu.com
+Launch Cubic: select source ISO, configure project directory
+Build the Tauri application on a Linux host (must be Linux -- a Windows/WSL build
+produces udiag4.exe, which will not run inside this Ubuntu image):
+npm install && npm run tauri build
+# Produces: src-tauri/target/release/udiag4 (binary; frontend is embedded in it,
+#           dist/ does not need to be copied separately)
+Copy udiag4 and resources/audio/speaker_test.wav (from src-tauri/resources/audio/,
+preserving that folder structure) into the Cubic chroot (e.g. /root/casterly-pulse-build)
+In the Cubic virtual environment terminal, run packaging/install.sh (also copied into the chroot alongside packaging/casterly-pulse.service).
+This single script installs the runtime dependencies (v4l-utils, ffmpeg, smartmontools,
+nvme-cli, lshw, dmidecode, usbutils, pciutils, bluetooth, bluez), copies the app to
+/opt/casterly/pulse/, installs + enables casterly-pulse.service, and configures GDM3
+auto-login for the ubuntu user. See packaging/casterly-pulse.service for the unit
+definition (note it sets WorkingDirectory=/opt/casterly/pulse, since udiag.db and
+exports/ are opened via relative paths and would otherwise land at "/").
+Exit Cubic virtual environment, generate ISO
+Write to USB: sudo dd if=casterly-pulse-v4.iso of=/dev/sdX bs=4M status=progress
+Note: if the ISO is dd'd without a persistence partition, anything the app writes to
+/opt/casterly/pulse at runtime (udiag.db, exports/) will not survive a reboot unless
+persistent storage is configured for that path during the ISO build.
+17. AI Roadmap (V5 and Beyond)
+17.1 Planned AI Features
+17.2 AI Architecture Vision
+18. Product Roadmap
+18.1 V4.1 — Near Term
+Supabase HTTP sync implementation — complete the upload queue HTTP client
+Audio collector — lspci audio + aplay -l for codec detection
+Dynamic GPU card — wire displayInfo and gpuInfo from context to SystemScan cards
+Dynamic Display card — wire EDID parsed data to SystemScan display card
+Touchpad test — implement gesture detection using X11 input events or evdev
+Report generation — HTML/PDF export per inspection using HTML template
+Settings screen — Supabase URL, API key, USB ID, LOT defaults
+Board serial number — add board_serial to SystemInfo from dmidecode -s baseboard-serial-number
+18.2 V5.0 — Major Release
+Supabase web dashboard — React portal for operations managers
+AI grading assistance — automated grade suggestion from hardware telemetry
+Battery health forecasting — ML-based wear prediction
+Camera OCR — serial number capture from barcode/QR
+Multi-USB coordination — multiple Pulse USB drives syncing to same LOT
+Enterprise SSO — SAML/OIDC authentication for multi-tenant Supabase
+Remote diagnostics — Casterly Endpoint Agent integration
+Stress tests — CPU/GPU/memory burn-in tests with automated pass/fail thresholds
+Wipe integration — NIST 800-88 data erasure workflow within Pulse
+Custom fields — configurable per-enterprise additional inspection fields
+18.3 V6.0 — Enterprise Platform
+Casterly Command Center — full web-based fleet management platform
+Predictive maintenance dashboards for enterprise clients
+API gateway for ERP/ITAM integration (ServiceNow, Ivanti, Lansweeper)
+White-label deployment for OEM and reseller partners
+Real-time remote device management
+Automated refurbishment workflow orchestration
+19. Appendix — Technical Reference
+19.1 Complete Linux Command Reference
+19.2 Rust Dependencies (Full Cargo.toml)
+[package]
+name = "udiag4"
+version = "0.1.0"
+description = "Casterly Pulse USB V4"
+edition = "2021"
+[lib]
+name = "udiag4_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+[dependencies]
+tauri              = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde              = { version = "1", features = ["derive"] }
+serde_json         = "1"
+rusqlite           = { version = "0.31", features = ["bundled"] }
+uuid               = { version = "1", features = ["v4"] }
+chrono             = "0.4"
+anyhow             = "1"
+tokio              = { version = "1", features = ["full"] }
+crossterm          = "0.27"
+sysinfo            = "0.30"
+smbios-lib         = "0.9"
+base64             = "0.22"
+regex              = "1"
+19.3 Frontend Dependencies (package.json)
+19.4 Data Model Reference
+— End of Main Document —
+20. Index
+Key terms, modules, commands, and screen references throughout this document.
+— End of Document —
+Casterly Command Center  ·  Pulse USB V4 PRD  ·  Tauri v2 + Rust + React 19  ·  Confidential
+
+[TABLE 0]
+Document Name | Casterly Pulse USB V4 PRD
+Version | V4.0 — Production Specification
+Status | Active Development — For Engineering Review
+Date | June 2026
+Classification | Internal — Confidential
+Architecture | Tauri v2 (Rust) + React 19 + TypeScript
+Platform | Ubuntu 26.04 LTS — Bootable USB
+Product Tagline | Pulse of Every Laptop
+
+[TABLE 1]
+Abbreviation | Definition
+API | Application Programming Interface
+BIOS | Basic Input/Output System
+CLI | Command-Line Interface
+CLOC | Crossterm Library for Output Control
+CSP | Content Security Policy
+DMI | Desktop Management Interface
+DRM | Direct Rendering Manager (Linux kernel subsystem)
+EDID | Extended Display Identification Data
+eDP | Embedded DisplayPort (internal laptop panel interface)
+FFI | Foreign Function Interface
+GPU | Graphics Processing Unit
+GUI | Graphical User Interface
+ITAD | IT Asset Disposition
+IPC | Inter-Process Communication (Tauri invoke() bridge)
+JSON | JavaScript Object Notation
+LOT | Batch identifier for a customer device collection
+LTS | Long-Term Support
+MAC | Media Access Control (network hardware address)
+MB / GB / TB | Megabyte / Gigabyte / Terabyte
+MHz / MT/s | Megahertz / Megatransfers per second (RAM speed)
+mWh / Wh | Milliwatt-hour / Watt-hour (battery energy unit)
+NVMe | Non-Volatile Memory Express (PCIe SSD protocol)
+OEM | Original Equipment Manufacturer
+PCI | Peripheral Component Interconnect
+PRD | Product Requirements Document
+Pulse | Pulse USB V4 — the product described in this document
+SATA | Serial ATA (storage interface)
+SMART | Self-Monitoring, Analysis and Reporting Technology
+SMBIOS | System Management BIOS
+SQLite | Embedded relational database engine
+SSD | Solid-State Drive
+Tauri | Cross-platform desktop framework (Rust backend + web frontend)
+TLS | Transport Layer Security
+TOC | Table of Contents
+TSX | TypeScript XML — React component file extension
+UEFI | Unified Extensible Firmware Interface
+USB | Universal Serial Bus
+UUID | Universally Unique Identifier
+V4 | Version 4 of the Casterly diagnostics platform
+v4l2 | Video4Linux2 (Linux camera subsystem)
+VRAM | Video Random Access Memory
+µWh | Microwatt-hours (raw Linux battery energy value)
+xrandr | X11 Resize and Rotate — display resolution tool
+
+[TABLE 2]
+PULSE | Pulse stands for Pulse of Every Laptop. It captures the complete hardware health signature of every device that passes through the Casterly inspection workflow — from CPU and memory to battery wear and display health.
+
+[TABLE 3]
+Attribute | Value
+Product Name | Casterly Pulse USB V4
+Tagline | Pulse of Every Laptop
+Version | V4.0
+Previous Name | Casterly UDiag (V1–V3)
+Architecture | Tauri v2 · Rust · React 19 · TypeScript · SQLite
+Base OS | Ubuntu 26.04 LTS (Questing Quokka)
+Deployment | Bootable USB Drive — No installation on target machine
+Status | Active Development — Production Specification
+Classification | Internal — Confidential
+Parent Platform | Casterly Command Center — ITAD Operations
+
+[TABLE 4]
+Feature | Description | Business Benefit
+Zero Installation | Boots from USB. No software installed on customer device. | Preserves data integrity for enterprise clients
+Automated Collection | 9 parallel Rust collectors gather hardware data in seconds. | Eliminates manual data entry errors
+LOT-Based Processing | Batch devices under customer LOT identifiers. | Enables enterprise client reporting
+Tamper-Resistant Records | UUID-identified inspections stored in SQLite. | Audit-grade documentation
+Cloud Synchronization | Upload queue with retry logic to Supabase. | Central dashboard visibility
+Dual Grading | Automated SMART data + manual physical grading. | Complete device qualification
+
+[TABLE 5]
+ARCHITECTURE CHOICE | Tauri v2 was chosen over Electron for its minimal memory footprint (no bundled Chromium), native Rust performance for hardware calls, and strong security model. The Rust backend runs as a native Linux process with full system access while the React frontend remains sandboxed.
+
+[TABLE 6]
+┌──────────────────────────────────────────────────────────────────────┐
+│                    LAYER 5 — CLOUD (Future)                         │
+│             Supabase · PostgreSQL · REST API · Auth                  │
+├──────────────────────────────────────────────────────────────────────┤
+│                 LAYER 4 — UPLOAD QUEUE (SQLite)                     │
+│        upload_queue table · PENDING/UPLOADED/FAILED status           │
+│        Retry engine · Batch sync · Network detection                 │
+├──────────────────────────────────────────────────────────────────────┤
+│                 LAYER 3 — REACT FRONTEND (TypeScript)               │
+│   20+ Screens · InspectionContext · WorkflowSidebar · ShadCN UI     │
+│   TailwindCSS v4 · Lucide Icons · Recharts · Responsive Layout      │
+│                         invoke() ↕ IPC Bridge                        │
+├──────────────────────────────────────────────────────────────────────┤
+│                 LAYER 2 — RUST BACKEND (Tauri v2)                   │
+│   Tauri Commands · Inventory Collectors · Diagnostics Engine        │
+│   Grading Engine · Inspection Manager · LOT Manager · Upload Queue  │
+├──────────────────────────────────────────────────────────────────────┤
+│                 LAYER 1 — HARDWARE ABSTRACTION                      │
+│   /sys/class/drm · /sys/class/power_supply · /sys/class/net        │
+│   /proc/cpuinfo · lscpu · dmidecode · smartctl · nvme · lspci      │
+│   lsblk · v4l2-ctl · lsusb · hciconfig · ffplay · aplay            │
+├──────────────────────────────────────────────────────────────────────┤
+│                 LAYER 0 — UBUNTU 26.04 LTS / LINUX 6.14+           │
+│          Kernel · udev · sysfs · procfs · DRM subsystem             │
+└──────────────────────────────────────────────────────────────────────┘
+
+[TABLE 7]
+Component | Version | Purpose | Runtime
+Rust | 1.78+ (stable) | Backend language — collectors, IPC, SQLite, upload queue | cargo / Cargo.toml
+Tauri | v2.x | Desktop framework — IPC bridge, window management, bundling | tauri-build v2
+React | 19.1.0 | Frontend UI framework | npm / Vite 7
+TypeScript | ~5.8.3 | Type-safe frontend language | tsc
+TailwindCSS | v4.3.1 | Utility-first CSS framework | @tailwindcss/vite
+ShadCN / Radix UI | Latest | Accessible component primitives | npm packages
+Lucide React | 1.18.0 | Icon library | npm
+Recharts | 3.8.1 | Data visualization for analytics | npm
+Motion | 12.40.0 | Animation library (Framer Motion fork) | npm
+rusqlite | 0.31 (bundled) | SQLite Rust binding — embedded, no external lib | Cargo
+serde / serde_json | 1.x | JSON serialization for all Tauri responses | Cargo
+uuid | 1.x (v4 feature) | UUID generation for inspection records | Cargo
+chrono | 0.4 | Timestamps and date formatting | Cargo
+anyhow | 1.x | Error handling throughout Rust codebase | Cargo
+crossterm | 0.27 | Terminal raw mode for keyboard test | Cargo
+tokio | 1.x (full) | Async runtime for future HTTP sync | Cargo
+sysinfo | 0.30 | System information fallback | Cargo
+SQLite | 3.x (bundled) | Embedded database — lots, inspections, upload_queue, settings | rusqlite bundled feature
+Supabase | Cloud (future) | PostgreSQL REST API for cloud sync | REST / HTTP
+Ubuntu | 26.04 LTS | Base OS for bootable USB | Cubic ISO builder
+Vite | 7.0.4 | Frontend build tool and dev server | npm
+
+[TABLE 8]
+Registered Tauri Commands (src-tauri/src/lib.rs)
+
+[TABLE 9]
+Command | Signature | Data Source
+get_app_info | () -> String | Returns version string: 'UDIAG 4.0 Ready'
+get_system_info | () -> Result<SystemInfo> | Manufacturer, model, serial, UUID from /sys/devices/virtual/dmi/id/
+get_cpu_info | () -> Result<CpuInfo> | lscpu + /proc/cpuinfo + /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq
+get_memory_info | () -> Result<Vec<MemoryModule>> | sudo dmidecode -t memory — per-DIMM slot data
+get_storage_info | () -> Result<Vec<StorageDevice>> | lsblk -d -b -P + sudo smartctl -a per device
+get_battery_info | () -> Result<Option<BatteryInfo>> | /sys/class/power_supply/BAT0/ — energy or charge based
+get_gpu_info | () -> Result<Vec<GpuInfo>> | lspci — VGA / 3D Controller entries
+get_display_info | () -> Result<Option<DisplayInfo>> | /sys/class/drm/*/edid raw EDID binary parsing
+get_network_info | () -> Result<Option<NetworkInfo>> | lspci + /sys/class/net/ + hciconfig
+get_camera_info | () -> Result<Option<CameraInfo>> | v4l2-ctl --list-devices — /dev/video* enumeration
+
+[TABLE 10]
+React mount event
+     │
+     ├── invoke('get_system_info')  ──────────────> Rust: system::collect()
+     ├── invoke('get_cpu_info')     ──────────────> Rust: cpu::collect()     [lscpu]
+     ├── invoke('get_memory_info')  ──────────────> Rust: memory::collect()  [dmidecode]
+     ├── invoke('get_storage_info') ──────────────> Rust: storage::collect() [lsblk + smartctl]
+     ├── invoke('get_battery_info') ──────────────> Rust: battery::collect() [/sys/class/power_supply/]
+     ├── invoke('get_gpu_info')     ──────────────> Rust: gpu::collect()     [lspci]
+     ├── invoke('get_display_info') ──────────────> Rust: display::collect() [/sys/class/drm/*/edid]
+     ├── invoke('get_network_info') ──────────────> Rust: network::collect() [lspci + /sys/class/net/]
+     └── invoke('get_camera_info') ──────────────> Rust: camera::collect()  [v4l2-ctl]
+          │
+          │  Each call resolves independently
+          │  Local state updated per call
+          │  InspectionContext updated per call
+          │  completedCalls++ per call
+          │
+          └── completedCalls >= 9 → onNext() auto-advance
+
+[TABLE 11]
+Dependency | Purpose
+tauri v2 | Desktop framework — IPC, window, bundle, security
+tauri-plugin-opener v2 | Open files/URLs from Rust commands
+serde v1 (derive) | Serialize/Deserialize all data models for JSON IPC
+serde_json v1 | JSON serialization + InspectionRun storage
+rusqlite v0.31 (bundled) | SQLite embedded DB — bundled means no external libsqlite3 needed
+uuid v1 (v4) | UUID v4 generation for inspection records
+chrono v0.4 | Timestamps: Local::now().format('%d/%m/%Y %H:%M:%S')
+anyhow v1 | Ergonomic error propagation with ? operator
+crossterm v0.27 | Terminal raw mode for keyboard test key capture
+tokio v1 (full) | Async runtime — future HTTP sync to Supabase
+sysinfo v0.30 | System information library (fallback/supplemental)
+smbios-lib v0.9 | SMBIOS direct access (supplemental to dmidecode)
+base64 v0.22 | Base64 encoding for future image upload
+regex v1 | Regex parsing in collectors
+
+[TABLE 12]
+Mode | Trigger | Behavior
+compact | screenWidth < 1600px | Reduced padding, condensed sidebar, stacked panels
+standard | 1600px ≤ width < 1920px | Standard layout with full sidebar and summary panel
+full | width ≥ 1920px | Expanded layout — all panels visible, maximum card width
+
+[TABLE 13]
+Boot USB → Ubuntu 26.04 LTS → Tauri App Auto-Launch
+     │
+     ▼
+STARTUP HOME (StartupHome.tsx)
+  [New Inspection]  [View History]  [LOT Management]  [Settings]
+     │
+     ▼
+LOT MANAGEMENT (LOTManagement.tsx)
+  Create LOT: lot_name + customer + location + date
+  OR resume active LOT from SQLite
+     │
+     ▼
+INSPECTOR LOGIN (InspectorManagement.tsx)
+  Select named inspector from list OR add new
+     │
+     ▼
+SYSTEM SCAN (SystemScan.tsx)
+  9 parallel invoke() calls → 10 InfoCards
+  Auto-advance when completedCalls ≥ 9
+     │
+     ▼
+HARDWARE INVENTORY (HardwareInventory.tsx)
+  Detailed component tables from InspectionContext cache
+     │
+     ▼
+MANUAL GRADING (ManualGrading.tsx)
+  7 components × Pass/Fail + multi-select defect types
+     │
+     ├─── SPEAKER TEST → WEBCAM TEST → KEYBOARD TEST → TOUCHPAD TEST
+     │
+     ▼
+BATTERY ASSESSMENT (BatteryAssessment.tsx)
+     │
+     ▼
+FINAL REVIEW (FinalReview.tsx)
+  Full summary — all data confirmed
+     │
+     ├── Duplicate detected? → InspectionSaveConfirmation.tsx
+     │     [Save Anyway] or [Cancel]
+     │
+     ▼
+INSPECTION COMPLETE (InspectionComplete.tsx)
+  UUID saved to SQLite + added to upload_queue
+  [Next Device] → back to System Scan (new inspection)
+  [View History] → InspectionHistory.tsx
+
+[TABLE 14]
+Component | Grade Options
+LCD Screen | Pass/Fail + defect types: Patch, Spot, Pressure Mark, Keyboard Impression, Line, Crack, Dead Pixel
+Top Cover (A Side) | Pass/Fail + defect types: Paint Peel, Scratch, Dent, Broken
+Bezel / Screen Frame | Pass/Fail + defect types: Paint Peel, Scratch, Dent, Broken
+Palmrest (C Side) | Pass/Fail + defect types: Paint Peel, Scratch, Dent, Broken
+Bottom Cover (D Side) | Pass/Fail + defect types: Paint Peel, Scratch, Dent, Broken
+Keyboard | Pass/Fail + defect types: Worn Out, Keys Missing
+Touchpad | Pass/Fail (no sub-defects)
+Remarks | Free-text field for additional notes
+
+[TABLE 15]
+DESIGN RULE | All collectors must handle missing hardware gracefully. No collector may panic or return an error that crashes the application. Missing hardware (no battery, no display, no camera) returns None or an empty Vec — never an error.
+
+[TABLE 16]
+Field | Source
+Manufacturer | /sys/devices/virtual/dmi/id/sys_vendor → fallback: sudo dmidecode -s system-manufacturer
+Model | /sys/devices/virtual/dmi/id/product_name
+Serial Number | /sys/devices/virtual/dmi/id/product_serial → fallback: sudo dmidecode -s system-serial-number
+UUID | /sys/devices/virtual/dmi/id/product_uuid → fallback: sudo dmidecode -s system-uuid
+
+[TABLE 17]
+Field | Source / Derivation
+manufacturer | lscpu → 'Vendor ID' field (e.g., GenuineIntel, AuthenticAMD)
+model | lscpu → 'Model name' field
+architecture | lscpu → 'Architecture' field (e.g., x86_64)
+sockets | lscpu → 'Socket(s)' field → parse u32
+cores_per_socket | lscpu → 'Core(s) per socket' field → parse u32
+threads | lscpu → 'CPU(s)' field → parse u32
+max_speed_mhz | lscpu → 'CPU max MHz' field → parse f64
+min_speed_mhz | lscpu → 'CPU min MHz' field → parse f64
+current_speed_mhz | /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq → divide by 1000.0
+cache_l1 | lscpu → 'L1d cache' field
+cache_l2 | lscpu → 'L2 cache' field
+cache_l3 | lscpu → 'L3 cache' field
+virtualization | lscpu → key 'Virtualization' exists → bool
+hyper_threading | threads > (sockets × cores_per_socket) → bool
+flags | /proc/cpuinfo → first 'flags' line → split whitespace → Vec<String>
+
+[TABLE 18]
+Field | Parsing Logic
+slot | Locator: field value (e.g., 'Bottom-Slot 1(left)')
+bank_locator | Bank Locator: field value (e.g., 'Controller0ChannelADimm0')
+size_mb | Size: field — parses GB (×1024) or MB; 'No Module Installed' → is_empty=true
+memory_type | Type: field (not 'Type Detail:') — e.g., 'DDR4', 'LPDDR5'
+manufacturer | Manufacturer: field — empty → 'Unknown'
+serial | Serial Number: field
+part_number | Part Number: field
+speed_mhz | Configured Memory Speed: field — strips 'MT/s' → parse u32
+is_empty | true when Size contains 'No Module Installed' or 'Not Installed'
+is_onboard | true when Locator contains 'motherboard'/'system board'/'onboard' OR Form Factor is 'Row Of Chips'/'Soldered'
+
+[TABLE 19]
+SMART Field | NVMe Source | SATA Source
+Firmware Version | Firmware Version: line | Firmware Version: line
+Health % | Percentage Used: X% → health = 100 - X | PASSED in output → 100; FAILED → 0
+Temperature | Temperature: X Celsius line | Temperature_Celsius SMART attribute
+Power On Hours | Power On Hours: X line | Power_On_Hours SMART attribute (last column)
+Power Cycles | Power Cycles: X line | Not typically available in SATA
+Media Errors | Media and Data Integrity Errors: X line | Reallocated_Sector_Ct attribute
+Critical Warning | Critical Warning: 0x00 line | SMART overall-health FAILED trigger
+Slot Label | NVMe1, NVMe2 (sequential) | SATA1, SATA2 (sequential)
+
+[TABLE 20]
+sysfs File | Unit | OEM Coverage
+energy_full_design | µWh (microwatt-hours) | Dell, HP, Lenovo, Asus, Acer
+energy_full | µWh | Dell, HP, Lenovo, Asus, Acer
+energy_now | µWh | Dell, HP, Lenovo, Asus, Acer
+charge_full_design | µAh (microamp-hours) | Some Samsung, Chromebooks, older Dell
+charge_full | µAh | Some Samsung, Chromebooks
+charge_now | µAh | Some Samsung, Chromebooks
+
+[TABLE 21]
+Field | Source
+manufacturer | /sys/class/power_supply/BAT0/manufacturer
+model | /sys/class/power_supply/BAT0/model_name
+serial_number | /sys/class/power_supply/BAT0/serial_number
+technology | /sys/class/power_supply/BAT0/technology (e.g., Li-ion)
+status | /sys/class/power_supply/BAT0/status (Charging/Discharging/Full/Unknown)
+cycle_count | /sys/class/power_supply/BAT0/cycle_count → read_u32()
+design_capacity_mwh | energy_full_design or charge_full_design → raw µWh/µAh value
+full_charge_capacity_mwh | energy_full or charge_full → raw value
+current_capacity_mwh | energy_now or charge_now → raw value
+voltage_mv | /sys/class/power_supply/BAT0/voltage_now → raw µV value
+design_capacity_wh | Normalized: convert_to_wh(design_capacity)
+full_charge_capacity_wh | Normalized: convert_to_wh(full_capacity)
+current_capacity_wh | Normalized: convert_to_wh(current_capacity)
+health_percent | (full_charge_capacity_mwh / design_capacity_mwh) × 100.0
+
+[TABLE 22]
+Field | Command
+vendor | sudo dmidecode -s bios-vendor (e.g., 'HP', 'Dell Inc.', 'LENOVO')
+version | sudo dmidecode -s bios-version (e.g., 'T70 Ver. 01.23.00')
+release_date | sudo dmidecode -s bios-release-date (e.g., '11/06/2025')
+
+[TABLE 23]
+Field | Source
+vendor | Intel / AMD / NVIDIA — string match from lspci line
+model | Full lspci line text (includes class, vendor, model)
+bus_address | First token of lspci line (e.g., '00:02.0')
+driver | Empty string in V4 — future: lspci -k or /sys/bus/pci/drivers/
+
+[TABLE 24]
+Field | EDID Source
+Manufacturer ID | Bytes 8–9: 5-bit encoded 3-char PNPID → BOE/AUO/LGD/CMN/SDC → friendly names
+Product Code | Bytes 10–11: u16 little-endian → formatted as E{:04X}
+Panel Part Number | Descriptor block starting at byte 54: tag 0xFE (range description) → ASCII string
+Physical Width cm | Byte 21 (EDID standard: display horizontal size in cm)
+Physical Height cm | Byte 22 (EDID standard: display vertical size in cm)
+Diagonal (inches) | √(width² + height²) / 2.54 → rounded to 1 decimal
+Resolution (H) | Byte 56 | ((byte 58 & 0xF0) << 4) → horizontal active pixels
+Resolution (V) | Byte 59 | ((byte 61 & 0xF0) << 4) → vertical active pixels
+Resolution String | '{H}x{V}' (e.g., '1920x1080')
+
+[TABLE 25]
+EDID Code | Manufacturer
+BOE | BOE Technology (very common in ThinkPads, HP ProBooks)
+AUO | AU Optronics (common in Dell, Acer, Asus)
+LGD | LG Display (common in Dell XPS, MacBook, HP Spectre)
+CMN | Innolux / Chi Mei (common in budget laptops)
+SDC | Samsung Display Corporation (premium devices)
+Other | Raw 3-char PNPID returned as-is
+
+[TABLE 26]
+Field | Source / Logic
+wifi | Full lspci line for 'Network controller' class
+wifi_friendly | Cleaned lspci name: strip PCI address, remove 'Network controller:', remove '(rev XX)', remove 'Corporation', collapse whitespace
+wifi_mac | Interface name starting with 'wl' from /sys/class/net/ → /sys/class/net/<iface>/address
+ethernet | Full lspci line for 'Ethernet controller' class
+ethernet_friendly | Same cleaning as wifi_friendly
+ethernet_mac | Interface name starting with 'en' or 'eth' from /sys/class/net/ → address file
+bluetooth | hciconfig command exits successfully → true; else → false
+
+[TABLE 27]
+Model String Contains | Vendor
+integrated_webcam_hd | Realtek
+realtek | Realtek
+sunplus | Sunplus
+chicony | Chicony
+bison | Bison
+liteon | Lite-On
+(none matched) | Unknown
+
+[TABLE 28]
+Test | Implementation | Method | Result Type
+Keyboard Test | crossterm raw mode | All keys pressed once, Q×3 exit | KeyboardTest{result, unique_keys}
+Speaker Test | ffplay or aplay | Left / Right / Stereo playback | SpeakerTest{result}
+Webcam Test | ffplay v4l2 | Live /dev/video0 preview | WebcamTest{result}
+Touchpad Test | React pointer events | Tap, scroll, click gestures | Pass/Fail
+Battery Assessment | InspectionContext.batteryInfo | Visual health review | Displayed, no test result
+
+[TABLE 29]
+Component | Result | Available Defects | Defect Count
+LCD Screen | Pass / Fail | Patch, Spot, Pressure Mark, Keyboard Impression, Line, Crack, Dead Pixel | 7 defect types
+Top Cover (A Side) | Pass / Fail | Paint Peel, Scratch, Dent, Broken | 4 defect types
+Bezel / Screen Frame | Pass / Fail | Paint Peel, Scratch, Dent, Broken | 4 defect types
+Palmrest (C Side) | Pass / Fail | Paint Peel, Scratch, Dent, Broken | 4 defect types
+Bottom Cover (D Side) | Pass / Fail | Paint Peel, Scratch, Dent, Broken | 4 defect types
+Keyboard | Pass / Fail | Worn Out, Keys Missing | 2 defect types
+Touchpad | Pass / Fail | (none — binary only) | 0 defect types
+
+[TABLE 30]
+Grade | Criteria
+A+ | All 7 components PASS, no defects. All functional tests PASS. Battery health ≥ 90%.
+A | All 7 PASS with minor cosmetic defects (scratch only). All functional tests PASS. Battery ≥ 80%.
+B | 1–2 components FAIL with repairable defects. All critical functional tests PASS. Battery ≥ 60%.
+C | 3–4 components FAIL. Some functional tests FAIL. Battery ≥ 40%.
+D | 5–6 components FAIL. Multiple functional test failures. Battery < 40%.
+Reject | LCD FAIL with crack/broken, or keyboard FAIL with missing keys, or 0 functional tests pass. Battery < 20% or not detected.
+
+[TABLE 31]
+NOTE | Grade rules above are guidelines for V4. Final grade computation logic will be implemented in a future Rust grading engine module (src-tauri/src/grading/engine.rs) that takes all inputs and produces a single overall grade with justification. Currently, ManualGrading struct captures raw per-component results.
+
+[TABLE 32]
+Property | Value
+Database File | udiag.db (in application working directory)
+Library | rusqlite v0.31 with 'bundled' feature (no external dependency)
+Tables | lots, inspections, upload_queue, settings
+Initialization | initialize_database() called at startup — CREATE TABLE IF NOT EXISTS
+Transaction Pattern | Each write operation uses a single conn.execute() call
+Serialization | InspectionRun stored as serde_json::to_string_pretty() in json_data TEXT column
+
+[TABLE 33]
+Column | Type | Description
+id | INTEGER PRIMARY KEY | Auto-increment lot identifier
+lot_name | TEXT NOT NULL | Human-readable LOT ID (e.g., CLY-LOT40)
+customer | TEXT NOT NULL | Customer organization name
+location | TEXT NOT NULL | Physical collection location
+inspection_date | TEXT NOT NULL | Date string from LOT creation form
+status | TEXT NOT NULL | 'ACTIVE' | 'COMPLETED' | 'CANCELLED'
+
+[TABLE 34]
+Column | Type | Description
+id | INTEGER PRIMARY KEY | Auto-increment record ID
+uuid | TEXT NOT NULL | UUID v4 generated per inspection (Uuid::new_v4().to_string())
+lot_name | TEXT NOT NULL | FK-like reference to lots.lot_name
+inspector | TEXT NOT NULL | Inspector name from InspectorManagement
+timestamp | TEXT NOT NULL | 'dd/mm/yyyy HH:MM:SS' via Local::now().format()
+uploaded | INTEGER DEFAULT 0 | 0 = not uploaded; 1 = uploaded to Supabase
+json_data | TEXT NOT NULL | Full InspectionRun serialized as JSON (serde_json::to_string_pretty)
+
+[TABLE 35]
+Column | Type | Description
+id | INTEGER PRIMARY KEY AUTOINCREMENT | Auto-increment queue ID
+inspection_uuid | TEXT NOT NULL | References inspections.uuid
+status | TEXT NOT NULL | 'PENDING' | 'UPLOADED' | 'FAILED'
+retry_count | INTEGER NOT NULL | Number of upload attempts (starts at 0)
+created_at | TEXT NOT NULL | 'dd/mm/yyyy HH:MM:SS' when queued
+uploaded_at | TEXT | 'dd/mm/yyyy HH:MM:SS' when successfully uploaded (nullable)
+
+[TABLE 36]
+Column | Type | Description
+key | TEXT PRIMARY KEY | Setting name (e.g., 'active_lot', 'sync_url', 'inspector')
+value | TEXT NOT NULL | Setting value as string
+
+[TABLE 37]
+V4 STATUS | Upload queue: IMPLEMENTED. Supabase HTTP sync: PENDING IMPLEMENTATION. The queue table, add_to_queue(), and queue stats modules exist and function. The HTTP client code using tokio + reqwest will be added in the next sprint.
+
+[TABLE 38]
+Table | Purpose | Notes
+lots | One row per LOT — lot_name, customer, location, date, status | Matches SQLite lots table
+devices | One row per device — UUID, serial, manufacturer, model, LOT, inspector | Normalized device identity
+inspections | One row per inspection — full JSON payload + metadata | Raw JSON + extracted key fields
+hardware_specs | One row per inspection — JSONB columns per component | CPU, memory, storage, battery, display, etc.
+grading_results | One row per inspection — per-component grades + defects | LCD, body, keyboard, touchpad
+test_results | One row per inspection — keyboard, speaker, webcam results | Functional test outcomes
+upload_log | Audit log of all sync operations — timestamps, errors | Sync observability
+inspectors | Named inspector registry — name, role, active status | Multi-tenant future
+
+[TABLE 39]
+Upload Queue (SQLite: upload_queue WHERE status='PENDING')
+     │
+     ▼
+Sync Engine (src-tauri/src/upload/)
+  1. Check network connectivity
+  2. Fetch PENDING records from upload_queue
+  3. For each record:
+     a. Load inspection JSON from inspections WHERE uuid = ?
+     b. POST to Supabase REST API /rest/v1/inspections
+     c. Include headers: apikey, Authorization: Bearer, Content-Type: application/json
+     d. On HTTP 200/201:
+        → UPDATE upload_queue SET status='UPLOADED', uploaded_at=now()
+        → UPDATE inspections SET uploaded=1
+     e. On failure:
+        → UPDATE upload_queue SET status='FAILED', retry_count=retry_count+1
+        → Exponential backoff: 2^retry_count seconds
+     f. Max retries: 5 → status='FAILED' (requires manual retry)
+  4. Signal SyncStatus screen with results
+
+[TABLE 40]
+Metric | Target
+USB Boot to Application Ready | < 30 seconds from GRUB menu selection to Pulse UI visible
+System Scan Duration | < 10 seconds for 9 parallel collectors on typical ITAD laptop
+SMART Data Collection | < 5 seconds per drive (NVMe faster than SATA)
+SQLite Write (full inspection) | < 500ms — single transaction with JSON payload up to ~100KB
+Screen Navigation | < 100ms — all navigation uses cached InspectionContext data
+Memory Usage (Rust process) | < 50MB RSS (Tauri binary — no Chromium overhead)
+Memory Usage (WebView) | < 200MB RSS (platform WebView rendering React app)
+SQLite Database Size | < 1MB per 100 inspections — JSON compression recommended for large fleets
+Keyboard Test Latency | < 50ms key detection (crossterm raw mode polling at 100ms intervals)
+Camera Preview | < 2 seconds to first frame (ffplay v4l2 initialization)
+
+[TABLE 41]
+Requirement | Implementation
+USB Integrity | Boot media uses cryptographic hash verification (future: secure boot signing)
+Application Sandbox | Tauri's CSP restricts WebView capabilities — no arbitrary JS code execution
+IPC Security | Tauri capability declarations (capabilities/default.json) limit which commands are accessible
+Data at Rest | SQLite database — future: SQLCipher encryption for customer data protection
+Data in Transit | All Supabase communication over HTTPS/TLS 1.3
+Inspection Signing | UUID per inspection provides tamper-evident record identity (future: HMAC signing)
+Role-Based Access | Inspector management enforces named technician tracking — future: admin/operator roles
+Audit Logging | Every inspection saves inspector name and timestamp — full chain of custody
+No Customer Data Modification | Pulse boots from read-only USB and never writes to target device storage
+Duplicate Prevention | Serial number deduplication prevents fraudulent re-submissions within a LOT
+
+[TABLE 42]
+Status | Visual | Meaning | When Set
+pending | Grey circle | Not yet reached | Default state for future steps
+active | Blue filled | Current step | Highlighted in sidebar
+passed | Green check | Completed successfully | Set by advanceStage()
+failed | Red X | Completed with failures | Set when test FAIL is confirmed
+
+[TABLE 43]
+Feature | Description
+Battery Health Prediction | LSTM model trained on cycle count + wear trends to predict remaining battery life in months
+Failure Prediction | Classification model on SMART attributes to predict drive failure probability within 90 days
+Automated Grade Suggestion | CV model trained on historical grading data to suggest A+/A/B/C/D from component photos
+Asset Pricing Recommendation | Regression model on hardware specs + condition grade to suggest refurbishment resale price
+Refurbishment Recommendation | Rule-based + ML engine recommending which components to replace for optimal ROI
+Quality Analytics | Dashboard identifying systematic defects by OEM model — e.g., battery degradation patterns in HP ProBook 440 G8
+Fleet Predictive Maintenance | Enterprise dashboard showing predicted failure timeline for managed device fleets
+Anomaly Detection | Identify unusual hardware configurations or impossible SMART values that indicate tampering
+OCR for Serial Numbers | Camera-based serial number capture to eliminate manual serial entry errors
+QR / Barcode Reader | Asset tag barcode scanning for warehouse integration
+
+[TABLE 44]
+Pulse USB V4 (Data Collection Layer)
+     │
+     ▼
+Supabase Cloud (PostgreSQL)
+  inspections: hardware_specs JSONB + grading_results + test_results
+     │
+     ▼
+AI Pipeline (Casterly Intelligence Engine — V5)
+  Feature Engineering:
+    • Battery: [design_wh, full_wh, cycle_count] → wear_rate, predicted_months_left
+    • Storage: [power_on_hours, reallocated_sectors, media_errors] → failure_probability
+    • Grading: [component_grades, defect_types] → overall_condition_score
+  Models:
+    • Battery Prediction: LSTM / gradient boosting on historical fleet data
+    • Price Suggestion:   XGBoost on [CPU, RAM, storage, battery, grade] → market_price
+    • Failure Detection:  Random forest on SMART telemetry
+     │
+     ▼
+AI Results pushed back to inspection record
+     │
+     ▼
+Web Dashboard (Casterly Command Center)
+  Fleet-level analytics + predictive alerts + pricing suggestions
+
+[TABLE 45]
+Description | Command | Category | Privilege
+System manufacturer | /sys/devices/virtual/dmi/id/sys_vendor | System | No root
+System serial | /sys/devices/virtual/dmi/id/product_serial → dmidecode fallback | System | Root (fallback)
+System UUID | /sys/devices/virtual/dmi/id/product_uuid → dmidecode fallback | System | Root (fallback)
+BIOS vendor | sudo dmidecode -s bios-vendor | BIOS | Root
+BIOS version | sudo dmidecode -s bios-version | BIOS | Root
+BIOS date | sudo dmidecode -s bios-release-date | BIOS | Root
+CPU all fields | lscpu | CPU | No root
+CPU flags | /proc/cpuinfo → flags line | CPU | No root
+CPU frequency | /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq | CPU | No root
+RAM modules | sudo dmidecode -t memory | Memory | Root
+Storage list | lsblk -d -b -P -o NAME,SIZE,MODEL,SERIAL,TRAN | Storage | No root
+SMART data | sudo smartctl -a /dev/sdX or /dev/nvme0n1 | Storage | Root
+NVMe health list | nvme list | Storage | No root
+NVMe smart-log | sudo nvme smart-log /dev/nvme0 | Storage | Root
+Battery energy | /sys/class/power_supply/BAT0/energy_full_design | Battery | No root
+Battery charge | /sys/class/power_supply/BAT0/charge_full_design | Battery | No root
+Battery status | /sys/class/power_supply/BAT0/status | Battery | No root
+Battery cycle | /sys/class/power_supply/BAT0/cycle_count | Battery | No root
+GPU | lspci | grep -i 'vga\|3d controller' | GPU | No root
+Display EDID | /sys/class/drm/<eDP-connector>/edid (binary) | Display | No root
+WiFi adapter | lspci | grep -i 'network controller' | Network | No root
+WiFi MAC | /sys/class/net/wl*/address | Network | No root
+Ethernet MAC | /sys/class/net/en*/address or eth*/address | Network | No root
+Bluetooth | hciconfig (command exists check) | Network | No root
+Camera | v4l2-ctl --list-devices | Camera | No root
+Speaker test | ffplay -nodisp -autoexit speaker_test.wav | Speaker | No root
+Webcam preview | ffplay -f v4l2 -i /dev/video0 | Webcam | No root
+Audio codec | lspci | grep -i audio | Audio | No root
+
+[TABLE 46]
+Package | Version | Purpose | Install
+react | 19.1.0 | UI framework | npm
+react-dom | 19.1.0 | DOM renderer | npm
+typescript | ~5.8.3 | Type system | npm
+vite | 7.0.4 | Build tool + dev server | npm
+tailwindcss | 4.3.1 | CSS framework | npm
+@tailwindcss/vite | 4.3.1 | Vite plugin for Tailwind | npm
+@tauri-apps/api | 2.11.0 | Tauri JS/TS API (invoke, window) | npm
+@tauri-apps/plugin-opener | 2.x | Open URLs/files | npm
+lucide-react | 1.18.0 | Icon library (500+ icons) | npm
+recharts | 3.8.1 | Charts for analytics screens | npm
+motion | 12.40.0 | Animation library | npm
+next-themes | 0.4.6 | Dark/light theme switching | npm
+sonner | 2.0.7 | Toast notifications | npm
+@radix-ui/* (40+ packages) | Latest | Headless accessible components | npm
+class-variance-authority | 0.7.1 | CVA for variant-based styles | npm
+clsx | 2.1.1 | Conditional className utility | npm
+tailwind-merge | 3.6.0 | Merge Tailwind classes without conflicts | npm
+react-hook-form | 7.80.0 | Form state management | npm
+cmdk | 1.1.1 | Command palette component | npm
+vaul | 1.1.2 | Drawer component | npm
+embla-carousel-react | 8.6.0 | Carousel/slider | npm
+
+[TABLE 47]
+DeviceInventory Struct (models/inventory.rs)
+
+[TABLE 48]
+Field | Contents
+system | SystemInfo — manufacturer, model, serial_number, uuid
+cpu | CpuInfo — 15 fields including model, cores, threads, speeds, caches, flags
+memory | Vec<MemoryModule> — one entry per DIMM slot (includes empty and onboard)
+storage | Vec<StorageDevice> — one per block device (NVMe + SATA, USB excluded)
+battery | Option<BatteryInfo> — None for desktops, Some for laptops
+bios | BiosInfo — vendor, version, release_date
+gpu | Vec<GpuInfo> — one per GPU (Intel integrated + discrete if present)
+display | Option<DisplayInfo> — None if no eDP connector EDID found
+network | Option<NetworkInfo> — wifi + ethernet + bluetooth
+
+[TABLE 49]
+InspectionRun Struct (models/run.rs)
+
+[TABLE 50]
+Field | Type / Contents
+uuid | String — UUID v4 (Uuid::new_v4().to_string())
+usb_id | String — USB device identifier for source tracking
+inspector | String — Selected inspector name
+lot_name | String — Active LOT name from settings table
+timestamp | String — 'dd/mm/yyyy HH:MM:SS' format
+uploaded | bool — false until Supabase confirms receipt
+battery_health | Option<f64> — health_percent from battery_health::calculate()
+grading | ManualGrading — 7-component physical grades + defects + remarks
+inventory | DeviceInventory — complete hardware data aggregate
+speaker_test | SpeakerTest { result: String }
+webcam_test | WebcamTest { result: String }
+keyboard_test | KeyboardTest { result: String, unique_keys: usize }
+
+[TABLE 51]
+Term | Description | Section(s)
+advanceStage() | Workflow progression function | Section 6.2
+anyhow | Rust error propagation crate | Section 5.2
+App.tsx | Root React component | Section 6.1, 6.2
+BatteryAssessment.tsx | Battery health review screen | Section 7.2
+battery::collect() | sysfs battery collector | Section 8.6
+battery_health::calculate() | Health % formula | Section 8.6, 19.4
+bios::collect() | dmidecode BIOS collector | Section 8.7
+camera::collect() | v4l2-ctl camera collector | Section 8.11
+chrono | Rust timestamp crate | Section 5.2
+completedCalls | Scan progress counter | Section 4.4
+crossterm | Terminal raw mode — keyboard test | Section 9.2
+Cubic | Ubuntu ISO customizer | Section 16.2
+database/sqlite.rs | SQLite initialization | Section 11
+DeviceInventory | Aggregate hardware model | Section 19.4
+diagnostics/keyboard.rs | Keyboard test implementation | Section 9.2
+diagnostics/speaker.rs | Speaker test implementation | Section 9.3
+diagnostics/webcam.rs | Webcam test implementation | Section 9.4
+display::collect() | EDID binary parser | Section 8.9
+DuplicateDetection.tsx | Admin duplicate view screen | Section 7.2
+duplicate::serial_exists() | Duplicate check function | Section 7.2
+EDID | Display identification data | Section 8.9
+eDP | Embedded DisplayPort connector | Section 8.9
+ffplay | Audio/video player for tests | Section 9.3, 9.4
+get_battery_info | Tauri command | Section 4.3
+get_camera_info | Tauri command | Section 4.3
+get_cpu_info | Tauri command | Section 4.3
+get_display_info | Tauri command | Section 4.3
+get_gpu_info | Tauri command | Section 4.3
+get_memory_info | Tauri command | Section 4.3
+get_network_info | Tauri command | Section 4.3
+get_storage_info | Tauri command | Section 4.3
+get_system_info | Tauri command | Section 4.3
+gpu::collect() | lspci GPU collector | Section 8.8
+grading/manual_grading.rs | 7-component physical grading | Section 10
+HardwareInventory.tsx | Detailed component view screen | Section 7.2
+InfoCard | Hardware display tile component | Section 15.2
+inspect/save.rs | Inspection save + queue | Section 11
+InspectionComplete.tsx | Post-save screen | Section 7.2
+InspectionContext | React shared data store | Section 4.5
+InspectionHistory.tsx | Browse past inspections | Section 7.2
+InspectionRun | Complete inspection data model | Section 19.4
+InspectionSaveConfirmation.tsx | Duplicate warning screen | Section 7.2
+invoke() | Tauri IPC bridge | Section 4.2, 4.3
+KeyboardTest.tsx | Interactive keyboard test screen | Section 7.2
+lib.rs | Tauri command registration | Section 4.3
+LOT | Batch identifier | Section 11.2
+LOTManagement.tsx | LOT session management screen | Section 7.2
+lot/repository.rs | LOT SQLite CRUD | Section 11.2
+lsblk | Block device enumeration | Section 8.5
+lscpu | CPU information | Section 8.3
+lspci | PCI device enumeration | Section 8.8, 8.10
+memory::collect() | dmidecode memory parser | Section 8.4
+ManualGrading | Physical grading data model | Section 10, 19.4
+ManualGrading.tsx | 7-component grading screen | Section 7.2
+models/device.rs | All device data structures | Section 5.1
+models/inventory.rs | DeviceInventory aggregate | Section 19.4
+models/run.rs | InspectionRun model | Section 19.4
+network::collect() | lspci + /sys/class/net/ collector | Section 8.10
+nvme smart-log | NVMe health command | Section 8.5
+Pulse USB V4 | Product name | Section 1.1
+rusqlite | SQLite Rust binding | Section 5.2, 11
+scanAlreadyCompleted | Module-level scan guard | Section 4.5
+scanCompleted | Context scan cache flag | Section 4.5
+serde | Rust serialization crate | Section 5.2
+SMART | Storage health standard | Section 8.5
+smartctl | SMART diagnostic tool | Section 8.5
+SpeakerTest.tsx | Speaker functional test screen | Section 7.2
+SQLite | Embedded database | Section 11
+StartupHome.tsx | Application landing screen | Section 7.2
+storage::collect() | lsblk + smartctl collector | Section 8.5
+Supabase | Cloud PostgreSQL backend | Section 12
+SyncStatus.tsx | Upload queue dashboard | Section 7.2
+system::collect() | sysfs + dmidecode system collector | Section 8.2
+SystemScan.tsx | Parallel 9-collector scan screen | Section 7.2, 4.4
+Tauri | Rust + WebView desktop framework | Section 4.1
+TailwindCSS | CSS utility framework | Section 6
+tokio | Rust async runtime | Section 5.2
+TouchpadTest.tsx | Touchpad gesture test screen | Section 7.2
+TypeScript | Frontend type system | Section 6
+udiag.db | SQLite database file | Section 11.1
+upload/queue.rs | Upload queue insertion | Section 12.1
+upload_queue | SQLite upload status table | Section 11.4
+UploadQueue.tsx | Detailed queue view screen | Section 7.2
+uuid | Rust UUID generation crate | Section 5.2
+v4l2-ctl | Camera enumeration tool | Section 8.11
+WebcamTest.tsx | Webcam live preview test screen | Section 7.2
+WorkflowSidebar | Stage progression sidebar | Section 15.3

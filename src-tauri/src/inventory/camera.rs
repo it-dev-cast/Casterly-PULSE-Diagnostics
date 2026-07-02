@@ -5,11 +5,6 @@ use crate::models::device::CameraInfo;
 
 pub fn collect() -> Result<Option<CameraInfo>> {
 
-    // WSL doesn't pass through the webcam — use the Windows host.
-    if crate::inventory::wslhost::is_wsl() {
-        return Ok(crate::inventory::wslhost::camera());
-    }
-
     let output = Command::new("v4l2-ctl")
         .arg("--list-devices")
         .output();

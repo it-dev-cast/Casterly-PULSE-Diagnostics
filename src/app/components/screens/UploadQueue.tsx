@@ -1,73 +1,115 @@
+import { useEffect, useState, useCallback } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { Upload, CheckCircle2, XCircle, Clock, RefreshCw, Trash2, Eye } from "lucide-react";
 
 type UploadStatus = "pending" | "uploaded" | "failed";
 
+// Mirrors the QueueItem struct from the Rust `get_upload_queue` command.
 interface QueueItem {
-  id: string;
-  serialNumber: string;
-  model: string;
-  inspectionDate: string;
-  uploadStatus: UploadStatus;
+  id: number;
+  inspectionUuid: string;
+  status: string; // PENDING / UPLOADED / FAILED
   retryCount: number;
+  createdAt: string;
+  uploadedAt: string | null;
+  serial: string;
+  model: string;
 }
 
-const queueData: QueueItem[] = [
-  {
-    id: "1",
-    serialNumber: "5CD124NJWZ",
-    model: "HP ProBook 440 G8",
-    inspectionDate: "2026-06-08 10:23",
-    uploadStatus: "pending",
-    retryCount: 0,
-  },
-  {
-    id: "2",
-    serialNumber: "5CD125PQRS",
-    model: "HP ProBook 440 G8",
-    inspectionDate: "2026-06-08 10:15",
-    uploadStatus: "pending",
-    retryCount: 0,
-  },
-  {
-    id: "3",
-    serialNumber: "5CD126TUVW",
-    model: "HP EliteBook 840 G7",
-    inspectionDate: "2026-06-08 10:08",
-    uploadStatus: "pending",
-    retryCount: 0,
-  },
-  {
-    id: "4",
-    serialNumber: "5CD127XYZA",
-    model: "HP ProBook 450 G8",
-    inspectionDate: "2026-06-08 09:58",
-    uploadStatus: "uploaded",
-    retryCount: 0,
-  },
-  {
-    id: "5",
-    serialNumber: "5CD128BCDE",
-    model: "HP ProBook 440 G8",
-    inspectionDate: "2026-06-08 09:45",
-    uploadStatus: "uploaded",
-    retryCount: 0,
-  },
-  {
-    id: "6",
-    serialNumber: "5CD129FGHI",
-    model: "HP EliteBook 850 G8",
-    inspectionDate: "2026-06-07 17:32",
-    uploadStatus: "failed",
-    retryCount: 3,
-  },
-];
+interface QueueData {
+  items: QueueItem[];
+  pending: number;
+  uploaded: number;
+  failed: number;
+}
 
 export function UploadQueue() {
-  const pendingCount = queueData.filter((i) => i.uploadStatus === "pending").length;
-  const uploadedCount = queueData.filter((i) => i.uploadStatus === "uploaded").length;
-  const failedCount = queueData.filter((i) => i.uploadStatus === "failed").length;
+  const [queue, setQueue] = useState<QueueData>({
+    items: [],
+    pending: 0,
+    uploaded: 0,
+    failed: 0,
+  });
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [detail, setDetail] = useState<string | null>(null);
 
-  const getStatusBadge = (status: UploadStatus) => {
+  const loadQueue = useCallback(async () => {
+    setLoading(true);
+    try {
+      const q = await invoke<QueueData>("get_upload_queue");
+      setQueue(q);
+    } catch (err) {
+      console.error("Failed to load upload queue:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadQueue();
+  }, [loadQueue]);
+
+  const run = async (fn: () => Promise<unknown>) => {
+    setBusy(true);
+    try {
+      await fn();
+      await loadQueue();
+    } catch (err) {
+      console.error(err);
+      alert(`Action failed: ${err}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runSync = async (fn: () => Promise<unknown>) => {
+    setBusy(true);
+    try {
+      const r = (await fn()) as { message?: string };
+      await loadQueue();
+      alert(`Sync: ${r?.message ?? "done"}`);
+    } catch (err) {
+      console.error(err);
+      alert(`Sync failed: ${err}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRetry = (item: QueueItem) =>
+    runSync(() => invoke("retry_upload", { id: item.id }));
+  const handleRetryAll = () => runSync(() => invoke("retry_all_failed"));
+  const handleDelete = (item: QueueItem) => {
+    if (!window.confirm("Remove this record from the upload queue?")) return;
+    run(() => invoke("delete_queue_item", { id: item.id }));
+  };
+  const handleDeleteUploaded = () => {
+    if (!window.confirm("Delete all uploaded records from the queue?")) return;
+    run(() => invoke("delete_uploaded"));
+  };
+  const handleView = async (item: QueueItem) => {
+    try {
+      const json = await invoke<string>("get_inspection_detail", {
+        uuid: item.inspectionUuid,
+      });
+      try {
+        setDetail(JSON.stringify(JSON.parse(json), null, 2));
+      } catch {
+        setDetail(json);
+      }
+    } catch (err) {
+      alert(`Failed to load record: ${err}`);
+    }
+  };
+
+  const queueData = queue.items;
+  const pendingCount = queue.pending;
+  const uploadedCount = queue.uploaded;
+  const failedCount = queue.failed;
+
+  const getStatusBadge = (raw: string) => {
+    const status = raw.toLowerCase() as UploadStatus;
     switch (status) {
       case "pending":
         return (
@@ -103,11 +145,19 @@ export function UploadQueue() {
           </p>
         </div>
         <div className="flex gap-2">
-          <button className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-sm px-3 py-2 rounded-lg transition-colors">
-            <RefreshCw size={16} />
+          <button
+            onClick={handleRetryAll}
+            disabled={busy || (failedCount === 0 && pendingCount === 0)}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-sm px-3 py-2 rounded-lg transition-colors disabled:opacity-50"
+          >
+            <RefreshCw size={16} className={busy ? "animate-spin" : ""} />
             Retry All Failed
           </button>
-          <button className="flex items-center gap-2 bg-slate-600 hover:bg-slate-500 text-white text-sm px-3 py-2 rounded-lg transition-colors">
+          <button
+            onClick={handleDeleteUploaded}
+            disabled={busy || uploadedCount === 0}
+            className="flex items-center gap-2 bg-slate-600 hover:bg-slate-500 text-white text-sm px-3 py-2 rounded-lg transition-colors disabled:opacity-50"
+          >
             <Trash2 size={16} />
             Delete Uploaded
           </button>
@@ -149,7 +199,7 @@ export function UploadQueue() {
         <div className="p-4 border-b border-slate-200">
           <h3 className="text-slate-700">Upload Queue</h3>
           <p className="text-xs text-slate-500 mt-0.5">
-            {queueData.length} total records
+            {loading ? "Loading…" : `${queueData.length} total records`}
           </p>
         </div>
 
@@ -178,48 +228,69 @@ export function UploadQueue() {
               </tr>
             </thead>
             <tbody>
-              {queueData.map((item) => (
-                <tr
-                  key={item.id}
-                  className="border-b border-slate-50 hover:bg-slate-50 transition-colors"
-                >
-                  <td className="px-4 py-3">
-                    <span className="font-mono text-slate-700">
-                      {item.serialNumber}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">{item.model}</td>
-                  <td className="px-4 py-3 text-slate-500">{item.inspectionDate}</td>
-                  <td className="px-4 py-3">{getStatusBadge(item.uploadStatus)}</td>
-                  <td className="px-4 py-3">
-                    {item.retryCount > 0 ? (
-                      <span className="text-red-600">{item.retryCount}</span>
-                    ) : (
-                      <span className="text-slate-400">-</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      {item.uploadStatus === "failed" && (
-                        <button className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-600 px-2 py-1 rounded transition-colors">
-                          <RefreshCw size={12} className="inline mr-1" />
-                          Retry
-                        </button>
-                      )}
-                      <button className="text-xs bg-slate-50 hover:bg-slate-100 text-slate-600 px-2 py-1 rounded transition-colors">
-                        <Eye size={12} className="inline mr-1" />
-                        View
-                      </button>
-                      {item.uploadStatus !== "pending" && (
-                        <button className="text-xs bg-red-50 hover:bg-red-100 text-red-600 px-2 py-1 rounded transition-colors">
-                          <Trash2 size={12} className="inline mr-1" />
-                          Delete
-                        </button>
-                      )}
-                    </div>
+              {!loading && queueData.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-slate-400">
+                    Upload queue is empty.
                   </td>
                 </tr>
-              ))}
+              )}
+              {queueData.map((item) => {
+                const status = item.status.toLowerCase();
+                return (
+                  <tr
+                    key={item.id}
+                    className="border-b border-slate-50 hover:bg-slate-50 transition-colors"
+                  >
+                    <td className="px-4 py-3">
+                      <span className="font-mono text-slate-700">
+                        {item.serial || "—"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">{item.model || "—"}</td>
+                    <td className="px-4 py-3 text-slate-500">{item.createdAt}</td>
+                    <td className="px-4 py-3">{getStatusBadge(item.status)}</td>
+                    <td className="px-4 py-3">
+                      {item.retryCount > 0 ? (
+                        <span className="text-red-600">{item.retryCount}</span>
+                      ) : (
+                        <span className="text-slate-400">-</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        {status !== "uploaded" && (
+                          <button
+                            onClick={() => handleRetry(item)}
+                            disabled={busy}
+                            className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-600 px-2 py-1 rounded transition-colors disabled:opacity-50"
+                          >
+                            <RefreshCw size={12} className="inline mr-1" />
+                            Retry
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleView(item)}
+                          className="text-xs bg-slate-50 hover:bg-slate-100 text-slate-600 px-2 py-1 rounded transition-colors"
+                        >
+                          <Eye size={12} className="inline mr-1" />
+                          View
+                        </button>
+                        {status !== "pending" && (
+                          <button
+                            onClick={() => handleDelete(item)}
+                            disabled={busy}
+                            className="text-xs bg-red-50 hover:bg-red-100 text-red-600 px-2 py-1 rounded transition-colors disabled:opacity-50"
+                          >
+                            <Trash2 size={12} className="inline mr-1" />
+                            Delete
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -238,6 +309,26 @@ export function UploadQueue() {
           </div>
         </div>
       </div>
+
+      {/* Record detail modal */}
+      {detail !== null && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[80vh] flex flex-col">
+            <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+              <h3 className="text-slate-800">Inspection Record</h3>
+              <button
+                onClick={() => setDetail(null)}
+                className="text-sm text-slate-500 hover:text-slate-700"
+              >
+                Close
+              </button>
+            </div>
+            <pre className="p-4 overflow-auto text-xs text-slate-700 font-mono whitespace-pre-wrap">
+              {detail}
+            </pre>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

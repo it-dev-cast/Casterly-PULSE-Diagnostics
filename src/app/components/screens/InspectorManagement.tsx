@@ -1,71 +1,36 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import {
-  User,
   Plus,
   Edit2,
   Trash2,
-  CheckCircle2,
   Clock,
   Mail,
   Phone,
   IdCard,
 } from "lucide-react";
 
+// Mirrors the Inspector struct returned by the Rust `get_inspectors` command
+// (PRD: inspectors persisted as JSON in the settings table).
 interface Inspector {
-  id: string;
-  name: string;
+  id: number;
+  inspectorName: string;
   employeeId: string;
-  email?: string;
-  phone?: string;
-  lastLogin: string;
-  isActive: boolean;
+  email: string;
+  phone: string;
+  createdDate: string;
 }
-
-const mockInspectors: Inspector[] = [
-  {
-    id: "1",
-    name: "Ravikiran K.",
-    employeeId: "EMP-2847",
-    email: "ravikiran@example.com",
-    phone: "+1-555-0123",
-    lastLogin: "Today, 09:00 AM",
-    isActive: true,
-  },
-  {
-    id: "2",
-    name: "Priya S.",
-    employeeId: "EMP-2891",
-    email: "priya@example.com",
-    phone: "+1-555-0124",
-    lastLogin: "Today, 08:30 AM",
-    isActive: false,
-  },
-  {
-    id: "3",
-    name: "Mohamed A.",
-    employeeId: "EMP-2902",
-    email: "mohamed@example.com",
-    phone: "+1-555-0125",
-    lastLogin: "Yesterday, 05:45 PM",
-    isActive: false,
-  },
-  {
-    id: "4",
-    name: "Sarah L.",
-    employeeId: "EMP-2915",
-    email: "sarah@example.com",
-    lastLogin: "Yesterday, 04:30 PM",
-    isActive: false,
-  },
-];
 
 interface InspectorManagementProps {
   onSelectInspector: (id: string) => void;
 }
 
 export function InspectorManagement({ onSelectInspector }: InspectorManagementProps) {
-  const [inspectors] = useState<Inspector[]>(mockInspectors);
+  const [inspectors, setInspectors] = useState<Inspector[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     employeeId: "",
@@ -73,22 +38,93 @@ export function InspectorManagement({ onSelectInspector }: InspectorManagementPr
     phone: "",
   });
 
-  const currentInspector = inspectors.find((i) => i.isActive);
+  const loadInspectors = useCallback(async () => {
+    setLoading(true);
+    try {
+      const rows = await invoke<Inspector[]>("get_inspectors");
+      setInspectors(rows);
+    } catch (err) {
+      console.error("Failed to load inspectors:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadInspectors();
+  }, [loadInspectors]);
 
   const handleCreateNew = () => {
+    setEditingId(null);
     setShowForm(true);
     setFormData({ name: "", employeeId: "", email: "", phone: "" });
   };
 
+  const handleEdit = (inspector: Inspector) => {
+    setEditingId(inspector.id);
+    setShowForm(true);
+    setFormData({
+      name: inspector.inspectorName,
+      employeeId: inspector.employeeId,
+      email: inspector.email,
+      phone: inspector.phone,
+    });
+  };
+
   const handleCancel = () => {
     setShowForm(false);
+    setEditingId(null);
     setFormData({ name: "", employeeId: "", email: "", phone: "" });
   };
 
-  const handleSave = () => {
-    // In real implementation, this would save to USB storage
-    console.log("Saving inspector:", formData);
-    setShowForm(false);
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      if (editingId !== null) {
+        await invoke("update_inspector", {
+          id: editingId,
+          inspectorName: formData.name,
+          employeeId: formData.employeeId,
+          email: formData.email,
+          phone: formData.phone,
+        });
+        console.log("Updated inspector id:", editingId);
+      } else {
+        const newId = await invoke<number>("create_inspector", {
+          inspectorName: formData.name,
+          employeeId: formData.employeeId,
+          email: formData.email,
+          phone: formData.phone,
+        });
+        console.log("Created inspector with id:", newId);
+      }
+      setShowForm(false);
+      setEditingId(null);
+      setFormData({ name: "", employeeId: "", email: "", phone: "" });
+      await loadInspectors();
+    } catch (err) {
+      console.error("Failed to save inspector:", err);
+      alert(`Failed to save inspector: ${err}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (inspector: Inspector) => {
+    if (
+      !window.confirm(
+        `Delete inspector "${inspector.inspectorName}"? This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+    try {
+      await invoke("delete_inspector", { id: inspector.id });
+      await loadInspectors();
+    } catch (err) {
+      console.error("Failed to delete inspector:", err);
+      alert(`Failed to delete inspector: ${err}`);
+    }
   };
 
   return (
@@ -100,43 +136,15 @@ export function InspectorManagement({ onSelectInspector }: InspectorManagementPr
         </p>
       </div>
 
-      {/* Current Inspector Card */}
-      {currentInspector && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <div className="flex items-start gap-3">
-            <div className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-white shrink-0">
-              {currentInspector.name.split(" ").map((n) => n[0]).join("")}
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
-                <h3 className="text-blue-900">Current Inspector</h3>
-                <span className="flex items-center gap-1 text-xs text-blue-700 bg-blue-100 px-2 py-0.5 rounded">
-                  <CheckCircle2 size={12} />
-                  Active
-                </span>
-              </div>
-              <div className="text-sm text-blue-800 font-medium">
-                {currentInspector.name}
-              </div>
-              <div className="text-xs text-blue-600 mt-1">
-                Employee ID: {currentInspector.employeeId}
-              </div>
-              <div className="flex items-center gap-1 text-xs text-blue-600 mt-1">
-                <Clock size={11} />
-                Last Login: {currentInspector.lastLogin}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Inspector List */}
       <div className="bg-white rounded-lg border border-slate-200">
         <div className="p-4 border-b border-slate-200 flex items-center justify-between">
           <div>
             <h3 className="text-slate-700">Available Inspectors</h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              {inspectors.length} inspectors registered on this USB
+              {loading
+                ? "Loading…"
+                : `${inspectors.length} inspectors registered on this USB`}
             </p>
           </div>
           <button
@@ -149,6 +157,11 @@ export function InspectorManagement({ onSelectInspector }: InspectorManagementPr
         </div>
 
         <div className="divide-y divide-slate-100">
+          {!loading && inspectors.length === 0 && (
+            <div className="p-8 text-center text-sm text-slate-400">
+              No inspectors yet. Click “Create New Inspector” to add one.
+            </div>
+          )}
           {inspectors.map((inspector) => (
             <div
               key={inspector.id}
@@ -156,19 +169,16 @@ export function InspectorManagement({ onSelectInspector }: InspectorManagementPr
             >
               <div className="flex items-start gap-3">
                 <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 text-sm shrink-0">
-                  {inspector.name.split(" ").map((n) => n[0]).join("")}
+                  {inspector.inspectorName
+                    .split(" ")
+                    .map((n) => n[0])
+                    .join("")}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-sm text-slate-700 font-medium">
-                      {inspector.name}
+                      {inspector.inspectorName}
                     </span>
-                    {inspector.isActive && (
-                      <span className="flex items-center gap-1 text-xs text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">
-                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                        Current
-                      </span>
-                    )}
                   </div>
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 text-xs text-slate-500">
@@ -189,23 +199,27 @@ export function InspectorManagement({ onSelectInspector }: InspectorManagementPr
                     )}
                     <div className="flex items-center gap-2 text-xs text-slate-400">
                       <Clock size={11} />
-                      <span>Last Login: {inspector.lastLogin}</span>
+                      <span>Created: {inspector.createdDate}</span>
                     </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  {!inspector.isActive && (
-                    <button
-                      onClick={() => onSelectInspector(inspector.id)}
-                      className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-600 px-3 py-1.5 rounded transition-colors"
-                    >
-                      Select
-                    </button>
-                  )}
-                  <button className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-colors">
+                  <button
+                    onClick={() => onSelectInspector(String(inspector.id))}
+                    className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-600 px-3 py-1.5 rounded transition-colors"
+                  >
+                    Select
+                  </button>
+                  <button
+                    onClick={() => handleEdit(inspector)}
+                    className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-colors"
+                  >
                     <Edit2 size={14} />
                   </button>
-                  <button className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors">
+                  <button
+                    onClick={() => handleDelete(inspector)}
+                    className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                  >
                     <Trash2 size={14} />
                   </button>
                 </div>
@@ -220,9 +234,13 @@ export function InspectorManagement({ onSelectInspector }: InspectorManagementPr
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
             <div className="p-4 border-b border-slate-200">
-              <h3 className="text-slate-800">Create New Inspector</h3>
+              <h3 className="text-slate-800">
+                {editingId !== null ? "Edit Inspector" : "Create New Inspector"}
+              </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                Add a new technician to this USB device
+                {editingId !== null
+                  ? "Update this technician's details"
+                  : "Add a new technician to this USB device"}
               </p>
             </div>
             <div className="p-4 space-y-4">
@@ -292,10 +310,14 @@ export function InspectorManagement({ onSelectInspector }: InspectorManagementPr
               </button>
               <button
                 onClick={handleSave}
-                disabled={!formData.name || !formData.employeeId}
+                disabled={saving || !formData.name || !formData.employeeId}
                 className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Save Inspector
+                {saving
+                  ? "Saving..."
+                  : editingId !== null
+                  ? "Update Inspector"
+                  : "Save Inspector"}
               </button>
             </div>
           </div>

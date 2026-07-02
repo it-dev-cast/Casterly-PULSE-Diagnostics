@@ -48,14 +48,7 @@ import {
   RefreshCw,
   Speaker,
   Camera,
-  Bluetooth,
 } from "lucide-react";
-
-// Toast notifications — popup feedback after the Save action
-import { toast } from "sonner";
-
-// Supabase client — writes the GPU card values into the cloud tbl_GPU table
-import { supabase } from "../../../lib/supabase";
 
 
 // =============================================================================
@@ -89,7 +82,8 @@ interface InfoCardProps {
 // SystemScan component props
 // ─────────────────────────────────────────────────────────────────────────────
 interface SystemScanProps {
-  onNext: () => void; // Called automatically once all 8 invoke() calls complete
+  onNext: () => void; // Called automatically once all invoke() calls complete
+  isExecutionActive: boolean; // True only when this stage is the active workflow step
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -104,9 +98,8 @@ interface SystemInfo {
   model: string;
   serial_number: string;
   uuid: string;
-  version: string;
-  sku_number: string;
-  family: string;
+  board_serial: string;
+  bios_version: string;
 }
 
 /** Returned by get_cpu_info — processor details */
@@ -123,10 +116,8 @@ interface CpuInfo {
   cache_l1: string;
   cache_l2: string;
   cache_l3: string;
-  cache_total_mb: number;  // Sum of L1d+L1i+L2+L3 in MiB (from Processor.py logic)
   virtualization: boolean;
   hyper_threading: boolean;
-  flags: string[];
 }
 
 /** Returned by get_memory_info — one entry per DIMM slot */
@@ -145,7 +136,6 @@ interface MemoryModule {
 
 /** Returned by get_storage_info — one entry per detected block device */
 interface StorageDevice {
-  slot: string;            // e.g. "NVMe1", "Disk1"
   device: string;
   model: string;
   serial: string;
@@ -170,10 +160,6 @@ interface BatteryInfo {
   full_charge_capacity_mwh: number; // Current max charge capacity (reflects wear)
   current_capacity_mwh: number;     // Charge level right now
   voltage_mv: number;
-  design_capacity_wh: number;       // Normalized to Wh by the backend
-  full_charge_capacity_wh: number;
-  current_capacity_wh: number;
-  health_percent: number;           // full / design × 100
 }
 
 /** Returned by get_network_info — primary network adapters */
@@ -187,6 +173,23 @@ interface NetworkInfo {
   bluetooth: boolean;
 }
 
+interface DisplayInfo {
+  manufacturer: string;
+  model: string;
+  panel_part_number: string;
+  resolution: string;
+  size_inches: number;
+}
+
+interface GpuInfo {
+  vendor: string;
+  model: string;
+  bus_address: string;
+  driver: string;
+  vram: string;
+  output_resolution: string;
+}
+
 interface CameraInfo {
   vendor: string;
   model: string;
@@ -194,49 +197,11 @@ interface CameraInfo {
   status: string;
 }
 
-/** Returned by get_audio_info — primary audio controller (mirrors Audio.py) */
 interface AudioInfo {
-  manufacturer: string;
-  model: string;
-}
-
-/** Returned by get_motherboard_info — baseboard + BIOS (mirrors Motherboard.py) */
-interface MotherboardInfo {
-  manufacturer: string;
-  model: string;
-  revision: string;
-  serial_number: string;
-  bios_version: string;
-  bios_date: string;
-  bios_vendor: string;
-}
-
-/** Returned by get_bluetooth_info — Bluetooth adapter (mirrors Bluetooth.py) */
-interface BluetoothInfo {
-  manufacturer: string;
-  model: string;
-}
-
-/** Returned by get_gpu_info — one entry per detected GPU adapter */
-interface GpuInfo {
-  vendor: string;
-  model: string;
-  bus_address: string;
-  driver: string;
-}
-
-/** Returned by get_display_info — the primary display panel */
-interface DisplayInfo {
-  manufacturer: string;
-  model: string;
-  panel_part_number: string;
-  resolution: string;
-  size_inches: number;
-  refresh_rate: string;
-  aspect_ratio: string;
-  size: string;
-  touchscreen: string;
-  manufacture_year: string;
+  codec: string;
+  speaker_type: string;
+  mic_type: string;
+  jack_type: string;
 }
 
 
@@ -272,34 +237,26 @@ function InfoCard({ icon: Icon, title, items, status = "ok" }: InfoCardProps) {
   };
 
   return (
-    <div className="h-full flex flex-col bg-white rounded-lg border border-slate-200 overflow-hidden">
+    <div className="bg-white rounded-lg border border-slate-200 overflow-hidden flex flex-col">
 
       {/* ── Card Header ─────────────────────────────────────────────────────── */}
-      {/* Icon + title on the left; status badge on the right */}
-      <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-200">
-        <div className="flex items-center gap-2.5">
-          <Icon size={15} className="text-blue-600" />
-          <span className="text-sm text-slate-700">{title}</span>
+      <div className="flex items-center justify-between px-3 py-1.5 bg-slate-50 border-b border-slate-200">
+        <div className="flex items-center gap-2">
+          <Icon size={14} className="text-blue-600" />
+          <span className="text-[11px] text-slate-700 font-medium">{title}</span>
         </div>
 
-        <span className={`text-[10px] px-2 py-0.5 rounded-full ${statusBadge[status]}`}>
+        <span className={`text-[9px] px-2 py-0.5 rounded-full ${statusBadge[status]}`}>
           {statusLabel[status]}
         </span>
       </div>
 
       {/* ── Card Body ───────────────────────────────────────────────────────── */}
-      {/* One block per item: small uppercase label above, full-width value below */}
-      {/* so long values (serials, model strings) wrap and display in full.       */}
-      <div className="p-4 space-y-2.5">
+      <div className="p-2 space-y-0.5">
         {items.map((item) => (
-          <div
-            key={item.label}
-            className="flex flex-col gap-0.5 pb-2 border-b border-slate-100 last:border-b-0 last:pb-0"
-          >
-            <span className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
-              {item.label}
-            </span>
-            <span className="text-[13px] leading-snug text-slate-800 font-medium break-words">
+          <div key={item.label} className="flex items-center justify-between gap-2 px-1.5 py-0.5">
+            <span className="text-[9px] text-slate-500 leading-tight">{item.label}</span>
+            <span className="text-[10px] text-slate-800 font-medium leading-tight text-right break-words">
               {item.value}
             </span>
           </div>
@@ -314,7 +271,7 @@ function InfoCard({ icon: Icon, title, items, status = "ok" }: InfoCardProps) {
 // =============================================================================
 // SystemScan — Main page component
 // =============================================================================
-export function SystemScan({ onNext }: SystemScanProps) {
+export function SystemScan({ onNext, isExecutionActive }: SystemScanProps) {
 
   // ─────────────────────────────────────────────────────────────────────────
   // Local state — one slice per hardware category
@@ -327,17 +284,10 @@ export function SystemScan({ onNext }: SystemScanProps) {
   const [storageInfo, setStorageInfo] = useState<StorageDevice[]>([]);
   const [batteryInfo, setBatteryInfo] = useState<BatteryInfo | null>(null);
   const [networkInfo, setNetworkInfo] = useState<NetworkInfo | null>(null);
-  const [cameraInfo, setCameraInfo] = useState<any>(null);
-  const [audioInfo, setAudioInfo] = useState<AudioInfo | null>(null);
-  const [motherboardInfo, setMotherboardInfo] = useState<MotherboardInfo | null>(null);
-  const [bluetoothInfo, setBluetoothInfo] = useState<BluetoothInfo | null>(null);
-
-  // GPU adapters + primary display — used to render the GPU card live.
-  const [gpuInfo, setGpuInfo] = useState<GpuInfo[]>([]);
   const [displayInfo, setDisplayInfo] = useState<DisplayInfo | null>(null);
-
-  // Tracks the in-flight Save → Supabase request for the GPU card.
-  const [savingGpu, setSavingGpu] = useState(false);
+  const [gpuInfo, setGpuInfo] = useState<GpuInfo[]>([]);
+  const [cameraInfo, setCameraInfo] = useState<CameraInfo | null>(null);
+  const [audioInfo, setAudioInfo] = useState<AudioInfo | null>(null);
 
   // Tracks how many of the 8 parallel invoke() calls have settled (resolved OR
   // rejected). When this hits 8, the scan is considered complete.
@@ -355,47 +305,6 @@ export function SystemScan({ onNext }: SystemScanProps) {
   // InspectionContext — shared data store across wizard steps
   // ─────────────────────────────────────────────────────────────────────────
   const { data, setData } = useInspection();
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // GPU card values (currently the static placeholders shown in the GPU card).
-  // Defined once here so the card display and the Save handler stay in sync.
-  // ─────────────────────────────────────────────────────────────────────────
-  // Primary GPU = first detected adapter. The GPU backend reports vendor,
-  // model and driver — so Graphics and Driver are live. VRAM is not collected
-  // by the backend, and Output (resolution) is a display property, so it's
-  // pulled from displayInfo. Rows fall back until their data arrives.
-  const primaryGpu = gpuInfo[0];
-  const gpuCardItems = [
-    { label: "Manufacturer", value: primaryGpu?.vendor   || "Scanning..." },
-    { label: "Model",        value: primaryGpu?.model    || "Scanning..." },
-    { label: "Driver",       value: primaryGpu?.driver   || "N/A" },
-    { label: "Output",       value: displayInfo?.resolution || "N/A" },
-  ];
-
-  // Saves the GPU card values into the Supabase `tbl_GPU` table, then shows a
-  // success/failure popup reporting whether the row was saved.
-  const handleSaveGpu = async () => {
-    setSavingGpu(true);
-
-    const record = {
-      graphics: primaryGpu?.model        || "",
-      vram:     "N/A",
-      driver:   primaryGpu?.driver       || "",
-      output:   displayInfo?.resolution  || "",
-    };
-
-    const { error } = await supabase.from("tbl_GPU").insert(record);
-
-    setSavingGpu(false);
-
-    if (error) {
-      toast.error("Could not save GPU details to tbl_GPU", {
-        description: error.message,
-      });
-    } else {
-      toast.success("GPU details saved to tbl_GPU");
-    }
-  };
 
 
   // ===========================================================================
@@ -421,13 +330,11 @@ export function SystemScan({ onNext }: SystemScanProps) {
     setStorageInfo(data.storageInfo || []);
     setBatteryInfo(data.batteryInfo);
     setNetworkInfo(data.networkInfo);
+    setDisplayInfo(data.displayInfo);
     setGpuInfo(data.gpuInfo || []);
-    setDisplayInfo(data.displayInfo || null);
-    setCameraInfo(data.cameraInfo || null);
-    setAudioInfo(data.audioInfo || null);
-    setMotherboardInfo(data.motherboardInfo || null);
-    setBluetoothInfo(data.bluetoothInfo || null);
-    setCompletedCalls(12); // Mark complete; suppresses fresh scan
+    setCameraInfo(data.cameraInfo);
+    setAudioInfo(data.audioInfo);
+    setCompletedCalls(10); // Mark complete; suppresses fresh scan
 
   }, []); // Empty deps — intentionally runs only on initial mount
 
@@ -482,21 +389,23 @@ export function SystemScan({ onNext }: SystemScanProps) {
       })
       .catch((err) => {
         console.error("System scan failed:", err);
-        // Surface the error in the UI instead of showing a blank card
-        setSystemInfo({
+        // Surface the error in the UI instead of showing a blank card, and
+        // mirror it into the shared context so a later restore stays consistent.
+        const errInfo = {
           manufacturer: "ERROR",
           model: String(err),
           serial_number: "-",
           uuid: "-",
-          version: "-",
-          sku_number: "-",
-          family: "-",
-        });
+          board_serial: "-",
+          bios_version: "-",
+        };
+        setSystemInfo(errInfo);
+        setData(prev => ({ ...prev, systemInfo: errInfo }));
         setCompletedCalls(prev => prev + 1);
       });
 
     // ── Call 2: CPU Info ───────────────────────────────────────────────────
-    // Returns processor model, core/thread counts, speed, cache, flags, etc.
+    // Returns processor model, core/thread counts, speed, cache, etc.
     invoke<CpuInfo>("get_cpu_info")
       .then((result) => {
         console.log("CPU INFO:", result);
@@ -526,13 +435,10 @@ export function SystemScan({ onNext }: SystemScanProps) {
       });
 
     // ── Call 4: GPU Info ───────────────────────────────────────────────────
-    // Result stored in context only (gpuInfo). No local state needed here
-    // because the GPU card currently uses static placeholder values.
-    // TODO: Wire up local gpuInfo state and render dynamic values.
     invoke<GpuInfo[]>("get_gpu_info")
       .then((result) => {
         console.log("GPU INFO:", result);
-        setGpuInfo(result || []);
+        setGpuInfo(result);
         setData(prev => ({ ...prev, gpuInfo: result }));
         setCompletedCalls(prev => prev + 1);
       })
@@ -542,10 +448,7 @@ export function SystemScan({ onNext }: SystemScanProps) {
       });
 
     // ── Call 5: Display Info ───────────────────────────────────────────────
-    // Result stored in context only (displayInfo). No local state needed here
-    // because the Display card currently uses static placeholder values.
-    // TODO: Wire up local displayInfo state and render dynamic values.
-    invoke<DisplayInfo>("get_display_info")
+    invoke<DisplayInfo | null>("get_display_info")
       .then((result) => {
         console.log("DISPLAY INFO:", result);
         setDisplayInfo(result);
@@ -587,9 +490,6 @@ export function SystemScan({ onNext }: SystemScanProps) {
       });
 
     // ── Call 8: Storage Info ───────────────────────────────────────────────
-    // Returns an array of StorageDevice. Also sets scanCompleted: true in
-    // context — this is the last call, so it acts as the "all done" signal.
-    
     invoke<StorageDevice[]>("get_storage_info")
       .then((result) => {
         console.log("STORAGE INFO:", result);
@@ -604,86 +504,40 @@ export function SystemScan({ onNext }: SystemScanProps) {
         console.error("STORAGE ERROR:", err);
         setCompletedCalls(prev => prev + 1);
       });
-    // ------------------------------------------------------
-// Call 9 : Camera Info
-// Final collector - marks scan as complete
-// ------------------------------------------------------
-// NOTE: If you add more calls, move scanCompleted: true to Effect 3 instead.
-invoke("get_camera_info")
-  .then((result) => {
-    console.log("CAMERA INFO:", result);
-
-    setCameraInfo(result);
-
-    setData((prev) => ({
-      ...prev,
-      cameraInfo: result,
-    }));
-
-    setCompletedCalls((prev) => prev + 1);
-  })
-  .catch((err) => {
-    console.error("CAMERA ERROR:", err);
-
-    setCompletedCalls((prev) => prev + 1);
-  });
-
-    // ── Call 10: Audio Info ────────────────────────────────────────────────
-    // Primary audio controller via lspci (port of Audio.py).
-    invoke<AudioInfo>("get_audio_info")
+    // ── Call 9: Camera Info ───────────────────────────────────────────────
+    invoke<CameraInfo | null>("get_camera_info")
       .then((result) => {
-        console.log("AUDIO INFO:", result);
+        console.log("CAMERA INFO:", result);
 
-        setAudioInfo(result);
-
-        setData((prev) => ({ ...prev, audioInfo: result }));
-
-        setCompletedCalls((prev) => prev + 1);
-      })
-      .catch((err) => {
-        console.error("AUDIO ERROR:", err);
-
-        setCompletedCalls((prev) => prev + 1);
-      });
-
-    // ── Call 11: Motherboard Info ──────────────────────────────────────────
-    // Baseboard + BIOS from sysfs DMI (port of Motherboard.py).
-    invoke<MotherboardInfo>("get_motherboard_info")
-      .then((result) => {
-        console.log("MOTHERBOARD INFO:", result);
-
-        setMotherboardInfo(result);
-
-        setData((prev) => ({ ...prev, motherboardInfo: result }));
-
-        setCompletedCalls((prev) => prev + 1);
-      })
-      .catch((err) => {
-        console.error("MOTHERBOARD ERROR:", err);
-
-        setCompletedCalls((prev) => prev + 1);
-      });
-
-    // ── Call 12: Bluetooth Info ────────────────────────────────────────────
-    // Bluetooth adapter via lsusb/lspci (port of Bluetooth.py). Final collector —
-    // marks scanCompleted: true in context.
-    invoke<BluetoothInfo>("get_bluetooth_info")
-      .then((result) => {
-        console.log("BLUETOOTH INFO:", result);
-
-        setBluetoothInfo(result);
+        setCameraInfo(result);
 
         setData((prev) => ({
           ...prev,
-          bluetoothInfo: result,
-          scanCompleted: true,
+          cameraInfo: result,
         }));
 
         setCompletedCalls((prev) => prev + 1);
       })
       .catch((err) => {
-        console.error("BLUETOOTH ERROR:", err);
+        console.error("CAMERA ERROR:", err);
 
+        setCompletedCalls((prev) => prev + 1);
+      });
+
+    // ── Call 10: Audio Info ───────────────────────────────────────────────
+    invoke<AudioInfo | null>("get_audio_info")
+      .then((result) => {
+        console.log("AUDIO INFO:", result);
+        setAudioInfo(result);
+        setData((prev) => ({
+          ...prev,
+          audioInfo: result,
+          scanCompleted: true,
+        }));
+        setCompletedCalls((prev) => prev + 1);
+      })
+      .catch((err) => {
+        console.error("AUDIO ERROR:", err);
         setCompletedCalls((prev) => prev + 1);
       });
 
@@ -703,13 +557,20 @@ invoke("get_camera_info")
   // ===========================================================================
   useEffect(() => {
 
-    if (completedCalls >= 12 && !autoAdvanced.current) {
+    // Only push the workflow forward when this stage is the active execution
+    // step. Clicking back to review a completed scan should not re-trigger the
+    // next stage.
+    if (
+      completedCalls >= 10 &&
+      !autoAdvanced.current &&
+      isExecutionActive
+    ) {
       autoAdvanced.current = true;
       console.log("SYSTEM SCAN COMPLETE");
       onNext();
     }
 
-  }, [completedCalls, onNext]);
+  }, [completedCalls, onNext, isExecutionActive]);
 
 
   // ===========================================================================
@@ -730,6 +591,9 @@ invoke("get_camera_info")
 
   // Primary storage device (first in list, typically the boot drive)
   const primaryDrive = storageInfo.length > 0 ? storageInfo[0] : null;
+
+  // Primary GPU (first detected GPU)
+  const primaryGpu = gpuInfo.length > 0 ? gpuInfo[0] : null;
 
 
   // ===========================================================================
@@ -765,9 +629,9 @@ invoke("get_camera_info")
           {/* Scan progress badge — switches to "complete" message at 8/8 */}
           <div className="flex items-center gap-1.5 text-xs bg-emerald-50 border border-emerald-200 text-emerald-700 px-3 py-1.5 rounded-lg">
             <CheckCircle2 size={13} />
-            {completedCalls >= 12
+            {completedCalls >= 10
               ? "Scan Complete - Auto advancing..."
-              : `Scanning... ${completedCalls}/12`}
+              : `Scanning... ${completedCalls}/10`}
           </div>
 
         </div>
@@ -776,35 +640,39 @@ invoke("get_camera_info")
 
       {/* ── Row 1: Core hardware cards ────────────────────────────────────── */}
       {/* System · CPU · Memory · Storage · Battery */}
-      <div className="grid grid-cols-5 gap-4">
+      <div className="grid grid-cols-5 gap-1 auto-rows-min">
 
-        {/* System — live device identity from DMI/SMBIOS (mirrors System.py) */}
+        {/* System — device identity from DMI/SMBIOS */}
         <InfoCard
           icon={Server}
           title="System"
           items={[
-            { label: "Manufacturer",  value: systemInfo?.manufacturer  || "Scanning..." },
-            { label: "Product Name",  value: systemInfo?.model          || "Scanning..." },
-            { label: "Version",       value: systemInfo?.version        || "N/A" },
-            { label: "Serial Number", value: systemInfo?.serial_number  || "Scanning..." },
-            { label: "UUID",          value: systemInfo?.uuid           || "Scanning..." },
-            { label: "SKU Number",    value: systemInfo?.sku_number     || "N/A" },
-            { label: "Family",        value: systemInfo?.family         || "N/A" },
+            { label: "Manufacturer", value: systemInfo?.manufacturer || "Scanning..." },
+            { label: "Model", value: systemInfo?.model || "Scanning..." },
+            { label: "Serial", value: systemInfo?.serial_number || "Scanning..." },
+            { label: "UUID", value: systemInfo?.uuid || "Scanning..." },
+            { label: "Board Serial", value: systemInfo?.board_serial || "Scanning..." },
+            { label: "BIOS Version", value: systemInfo?.bios_version || "Scanning..." },
           ]}
         />
 
-        {/* CPU — live processor details (mirrors Processor.py output fields) */}
+        {/* CPU — processor details */}
         <InfoCard
           icon={Cpu}
-          title="Processor"
+          title="CPU"
           items={[
-            { label: "Manufacturer",    value: cpuInfo?.manufacturer || "Scanning..." },
-            { label: "Model",           value: cpuInfo?.model        || "Scanning..." },
-            { label: "Physical Cores",  value: cpuInfo ? `${cpuInfo.cores_per_socket}` : "Scanning..." },
-            { label: "Logical Cores",   value: cpuInfo ? `${cpuInfo.threads}`          : "Scanning..." },
-            { label: "Clock Frequency", value: cpuInfo ? `${Math.round(cpuInfo.max_speed_mhz)} MHz` : "Scanning..." },
-            { label: "Sockets",        value: cpuInfo ? `${cpuInfo.sockets}` : "Scanning..." },
-            { label: "Cache",          value: cpuInfo ? `${cpuInfo.cache_total_mb} MB` : "Scanning..." },
+            { label: "Processor", value: cpuInfo?.model || "Scanning..." },
+            { label: "Vendor", value: cpuInfo?.manufacturer || "Scanning..." },
+            { label: "Arch", value: cpuInfo?.architecture || "Scanning..." },
+            { label: "Sockets", value: cpuInfo ? `${cpuInfo.sockets}` : "Scanning..." },
+            { label: "Cores/Socket", value: cpuInfo ? `${cpuInfo.cores_per_socket}` : "Scanning..." },
+            { label: "Threads", value: cpuInfo ? `${cpuInfo.threads}` : "Scanning..." },
+            { label: "Max Speed", value: cpuInfo ? `${cpuInfo.max_speed_mhz} MHz` : "Scanning..." },
+            { label: "Min Speed", value: cpuInfo ? `${cpuInfo.min_speed_mhz} MHz` : "Scanning..." },
+            { label: "Current Speed", value: cpuInfo ? `${cpuInfo.current_speed_mhz} MHz` : "Scanning..." },
+            { label: "Cache L1", value: cpuInfo?.cache_l1 || "Scanning..." },
+            { label: "Cache L2", value: cpuInfo?.cache_l2 || "Scanning..." },
+            { label: "Cache L3", value: cpuInfo?.cache_l3 || "Scanning..." },
           ]}
         />
 
@@ -813,63 +681,54 @@ invoke("get_camera_info")
           icon={MemoryStick}
           title="Memory"
           items={[
-            { label: "Manufacturer",    value: firstModule?.manufacturer || "Scanning..." },
-            { label: "Model",           value: firstModule?.part_number  || "N/A" },
-            { label: "Size",            value: memoryInfo.length > 0 ? `${totalMemoryGb} GB` : "Scanning..." },
-            { label: "Type",            value: firstModule?.memory_type  || "Scanning..." },
-            { label: "Clock Frequency", value: firstModule ? `${firstModule.speed_mhz} MT/s` : "Scanning..." },
-            { label: "Serial Number",   value: firstModule?.serial       || "N/A" },
-            { label: "Total Slots",     value: memoryInfo.length > 0 ? `${memoryInfo.length}` : "Scanning..." },
-            { label: "Installed Slots", value: memoryInfo.length > 0 ? `${populatedSlots}` : "Scanning..." },
+            { label: "Installed", value: memoryInfo.length > 0 ? `${totalMemoryGb.toFixed(1)} GB` : "Scanning..." },
+            { label: "Type", value: firstModule?.memory_type || "Scanning..." },
+            { label: "Speed", value: firstModule ? `${firstModule.speed_mhz} MT/s` : "Scanning..." },
+            { label: "Modules", value: memoryInfo.length > 0 ? `${memoryInfo.length}` : "Scanning..." },
+            { label: "Used Slots", value: `${populatedSlots}` },
+            { label: "Empty Slots", value: `${memoryInfo.length - populatedSlots}` },
+            { label: "Topology", value: onboardMemory ? "Onboard" : `${populatedSlots} Used` },
+            { label: "Slot", value: firstModule?.slot || "N/A" },
+            { label: "Manufacturer", value: firstModule?.manufacturer || "N/A" },
+            { label: "Part Number", value: firstModule?.part_number || "N/A" },
+            { label: "Serial", value: firstModule?.serial || "N/A" },
           ]}
         />
 
-        {/* Storage — primary drive, labels matched to Storage.py keys */}
+        {/* Storage — primary drive (index 0 of storageInfo array) */}
         <InfoCard
           icon={HardDrive}
           title="Storage"
           items={[
-            { label: "Manufacturer",      value: primaryDrive?.model ? (primaryDrive.model.split(" ")[0] || "Unknown") : "Scanning..." },
-            { label: "Part Number/Model", value: primaryDrive?.model        || "Scanning..." },
-            { label: "Size",              value: primaryDrive ? `${primaryDrive.size_gb.toFixed(0)} GB` : "Scanning..." },
-            { label: "Type",              value: primaryDrive?.storage_type || "Scanning..." },
-            { label: "Serial Number",     value: primaryDrive?.serial       || "N/A" },
-            { label: "Locator",           value: primaryDrive?.device       || "N/A" },
-            { label: "Bank Location",     value: primaryDrive?.slot          || "N/A" },
+            { label: "Type", value: primaryDrive?.storage_type || "Scanning..." },
+            { label: "Model", value: primaryDrive?.model || "Scanning..." },
+            { label: "Serial", value: primaryDrive?.serial || "Scanning..." },
+            { label: "Capacity", value: primaryDrive ? `${primaryDrive.size_gb.toFixed(0)} GB` : "Scanning..." },
+            { label: "Firmware", value: primaryDrive?.firmware || "N/A" },
+            { label: "Transport", value: primaryDrive?.transport || "N/A" },
+            { label: "Health", value: primaryDrive?.health_percent != null ? `${primaryDrive.health_percent}%` : "N/A" },
+            { label: "Temp", value: primaryDrive?.temperature_c != null ? `${primaryDrive.temperature_c}°C` : "N/A" },
+            { label: "Power On", value: primaryDrive?.power_on_hours != null ? `${primaryDrive.power_on_hours}h` : "N/A" },
+            { label: "Device", value: primaryDrive?.device || "N/A" },
           ]}
         />
 
-        {/* Battery — live from sysfs (mirrors Battery.py): identity, capacities, health */}
+        {/* Battery — health %, current vs full charge capacity, cycle count */}
         <InfoCard
           icon={Battery}
           title="Battery"
           status="ok"
           items={[
-            { label: "Manufacturer",  value: batteryInfo?.manufacturer  || "Scanning..." },
-            { label: "Model Number",  value: batteryInfo?.model          || "N/A" },
-            { label: "Composition",   value: batteryInfo?.technology     || "N/A" },
-            { label: "Serial Number", value: batteryInfo?.serial_number  || "N/A" },
-            {
-              label: "Energy Full",
-              value: batteryInfo ? `${batteryInfo.full_charge_capacity_wh.toFixed(1)} Wh` : "Scanning...",
-            },
-            {
-              label: "Energy Design",
-              value: batteryInfo ? `${batteryInfo.design_capacity_wh.toFixed(1)} Wh` : "Scanning...",
-            },
-            {
-              label: "Wear Level",
-              value: batteryInfo ? `${Math.max(0, 100 - batteryInfo.health_percent).toFixed(1)}%` : "Scanning...",
-            },
-            {
-              label: "Cycle Count",
-              value: batteryInfo ? batteryInfo.cycle_count.toString() : "Scanning...",
-            },
-            {
-              label: "Battery Health",
-              value: batteryInfo ? `${batteryInfo.health_percent.toFixed(1)}%` : "Scanning...",
-            },
-            { label: "Status", value: batteryInfo?.status || "N/A" },
+            { label: "Health", value: batteryInfo ? `${Math.round((batteryInfo.full_charge_capacity_mwh / batteryInfo.design_capacity_mwh) * 100)}%` : "Scanning..." },
+            { label: "Capacity", value: batteryInfo ? `${(batteryInfo.current_capacity_mwh / 1000).toFixed(0)} / ${(batteryInfo.full_charge_capacity_mwh / 1000).toFixed(0)} Wh` : "Scanning..." },
+            { label: "Status", value: batteryInfo?.status || "Scanning..." },
+            { label: "Technology", value: batteryInfo?.technology || "Scanning..." },
+            { label: "Cycle Count", value: batteryInfo ? batteryInfo.cycle_count.toString() : "Scanning..." },
+            { label: "Voltage", value: batteryInfo ? `${batteryInfo.voltage_mv} mV` : "Scanning..." },
+            { label: "Manufacturer", value: batteryInfo?.manufacturer || "N/A" },
+            { label: "Model", value: batteryInfo?.model || "N/A" },
+            { label: "Serial", value: batteryInfo?.serial_number || "N/A" },
+            { label: "Design", value: batteryInfo ? `${(batteryInfo.design_capacity_mwh / 1000).toFixed(0)} Wh` : "N/A" },
           ]}
         />
 
@@ -877,100 +736,84 @@ invoke("get_camera_info")
 
 
       {/* ── Row 2: Peripheral / connectivity cards ────────────────────────── */}
-      {/* Display · GPU · Network · Audio · Camera — all live from the scan.  */}
-      <div className="grid grid-cols-5 gap-4 mt-4">
+      {/* Display · GPU · Network · Audio · Camera */}
+      {/* NOTE: Display, GPU, Audio, Camera use static placeholder values.    */}
+      {/* TODO: Replace statics with dynamic data from context (displayInfo,  */}
+      {/*       gpuInfo) once those invoke() calls are wired to local state.  */}
+      <div className="grid grid-cols-5 gap-1 mt-2 auto-rows-min">
 
-        {/* Display — live panel info from EDID/xrandr (mirrors Display.py) */}
+        {/* Display — details from the display collector when available */}
         <InfoCard
           icon={Monitor}
           title="Display"
           items={[
-            { label: "Manufacturer",     value: displayInfo?.manufacturer      || "Scanning..." },
-            { label: "Product Code",     value: displayInfo?.model             || "N/A" },
-            { label: "Model Number",     value: displayInfo?.panel_part_number || "N/A" },
-            { label: "Size",             value: displayInfo?.size || (displayInfo?.size_inches ? `${displayInfo.size_inches}"` : "N/A") },
-            { label: "Resolution",       value: displayInfo?.resolution        || "Scanning..." },
-            { label: "Refresh Rate",     value: displayInfo?.refresh_rate      || "N/A" },
-            { label: "Aspect Ratio",     value: displayInfo?.aspect_ratio      || "N/A" },
-            { label: "Touchscreen",      value: displayInfo?.touchscreen       || "N/A" },
-            { label: "Manufacture Year", value: displayInfo?.manufacture_year  || "N/A" },
+            { label: "Manufacturer", value: displayInfo?.manufacturer || "N/A" },
+            { label: "Model", value: displayInfo?.model || "N/A" },
+            { label: "Panel PN", value: displayInfo?.panel_part_number || "N/A" },
+            { label: "Resolution", value: displayInfo?.resolution || "N/A" },
+            { label: "Size", value: displayInfo ? `${displayInfo.size_inches.toFixed(1)} in` : "N/A" },
+            { label: "Source", value: displayInfo ? "EDID / DRM" : "N/A" },
           ]}
         />
 
-        {/* GPU — static placeholder values; Save button writes them to Supabase */}
-        <div className="space-y-2">
-          <InfoCard
-            icon={CircuitBoard}
-            title="GPU"
-            items={gpuCardItems}
-          />
-
-          {/* Save → insert the GPU values into Supabase tbl_GPU, then popup */}
-          <button
-            onClick={handleSaveGpu}
-            disabled={savingGpu}
-            className="w-full text-xs px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-60 disabled:cursor-not-allowed text-white transition-colors"
-          >
-            {savingGpu ? "Saving..." : "Save"}
-          </button>
-        </div>
+        {/* GPU — details from the GPU collector when available */}
+        <InfoCard
+          icon={CircuitBoard}
+          title="GPU"
+          items={[
+            { label: "Vendor", value: primaryGpu?.vendor || "Scanning..." },
+            { label: "Model", value: primaryGpu?.model || "N/A" },
+            { label: "Driver", value: primaryGpu?.driver || "N/A" },
+            { label: "Bus", value: primaryGpu?.bus_address || "N/A" },
+            { label: "VRAM", value: primaryGpu?.vram || "N/A" },
+            { label: "Output", value: primaryGpu?.output_resolution || displayInfo?.resolution || "N/A" },
+            { label: "Display Res", value: displayInfo?.resolution || "N/A" },
+            { label: "Status", value: primaryGpu ? "Detected" : "Scanning..." },
+          ]}
+        />
 
         {/* Network — dynamic data from networkInfo state */}
         <InfoCard
           icon={Wifi}
           title="Network"
           items={[
-            { label: "WiFi",      value: networkInfo?.wifi_friendly      || "Scanning..." },
-            { label: "WiFi MAC",  value: networkInfo?.wifi_mac           || "N/A" },
-            { label: "LAN",       value: networkInfo?.ethernet_friendly  || "Not Present" },
-            { label: "LAN MAC",   value: networkInfo?.ethernet_mac       || "Not Present" },
-            { label: "Bluetooth", value: networkInfo?.bluetooth ? "Yes"  : "No" },
+            { label: "WiFi", value: networkInfo?.wifi_friendly || "Scanning..." },
+            { label: "WiFi Adapter", value: networkInfo?.wifi || "N/A" },
+            { label: "WiFi MAC", value: networkInfo?.wifi_mac || "N/A" },
+            { label: "LAN", value: networkInfo?.ethernet_friendly || "Not Present" },
+            { label: "LAN Adapter", value: networkInfo?.ethernet || "N/A" },
+            { label: "LAN MAC", value: networkInfo?.ethernet_mac || "Not Present" },
+            { label: "Bluetooth", value: networkInfo?.bluetooth ? "Yes" : "No" },
+            { label: "Status", value: networkInfo ? "Connected / Available" : "Scanning..." },
           ]}
         />
 
-        {/* Audio — live audio controller via lspci (mirrors Audio.py) */}
+        {/* Audio — details from the audio collector when available */}
         <InfoCard
           icon={Speaker}
           title="Audio"
           items={[
-            { label: "Manufacturer", value: audioInfo?.manufacturer || "Scanning..." },
-            { label: "Model",        value: audioInfo?.model        || "Scanning..." },
+            { label: "Speakers", value: audioInfo?.speaker_type || "Scanning..." },
+            { label: "Codec", value: audioInfo?.codec || "Scanning..." },
+            { label: "Jack", value: audioInfo?.jack_type || "Scanning..." },
+            { label: "Mic", value: audioInfo?.mic_type || "Scanning..." },
+            { label: "Playback", value: audioInfo ? "Available" : "Scanning..." },
+            { label: "Capture", value: audioInfo ? "Available" : "Scanning..." },
+            { label: "Status", value: audioInfo ? "Detected" : "Scanning..." },
           ]}
         />
 
-        {/* Camera — live webcam via v4l2/lsusb (mirrors Webcam.py) */}
+        {/* Camera — details from the camera collector when available */}
         <InfoCard
           icon={Camera}
           title="Camera"
           items={[
-            { label: "Manufacturer", value: cameraInfo?.vendor || "Scanning..." },
-            { label: "Model",        value: cameraInfo?.model  || "Scanning..." },
-            { label: "Status",       value: cameraInfo?.status || "N/A" },
-          ]}
-        />
-
-        {/* Motherboard — baseboard + BIOS from sysfs DMI (mirrors Motherboard.py) */}
-        <InfoCard
-          icon={CircuitBoard}
-          title="Motherboard"
-          items={[
-            { label: "Manufacturer",  value: motherboardInfo?.manufacturer  || "Scanning..." },
-            { label: "Model",         value: motherboardInfo?.model         || "Scanning..." },
-            { label: "Revision",      value: motherboardInfo?.revision      || "N/A" },
-            { label: "Serial Number", value: motherboardInfo?.serial_number || "N/A" },
-            { label: "BIOS Version",  value: motherboardInfo?.bios_version  || "N/A" },
-            { label: "BIOS Date",     value: motherboardInfo?.bios_date     || "N/A" },
-            { label: "BIOS Vendor",   value: motherboardInfo?.bios_vendor   || "N/A" },
-          ]}
-        />
-
-        {/* Bluetooth — adapter via lsusb/lspci (mirrors Bluetooth.py) */}
-        <InfoCard
-          icon={Bluetooth}
-          title="Bluetooth"
-          items={[
-            { label: "Manufacturer", value: bluetoothInfo?.manufacturer || "Scanning..." },
-            { label: "Model",        value: bluetoothInfo?.model        || "Scanning..." },
+            { label: "Model", value: cameraInfo?.model || "Scanning..." },
+            { label: "Vendor", value: cameraInfo?.vendor || "Scanning..." },
+            { label: "Device", value: cameraInfo?.device || "Scanning..." },
+            { label: "Status", value: cameraInfo?.status || "Scanning..." },
+            { label: "Source", value: cameraInfo ? "v4l2-ctl" : "Scanning..." },
+            { label: "Detection", value: cameraInfo ? "Detected" : "Scanning..." },
           ]}
         />
 

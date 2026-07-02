@@ -1,85 +1,102 @@
-import { useState } from "react";
+import { useEffect, useState, useCallback } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { Search, Filter, Eye, Download, Trash2, CheckCircle2, XCircle, Clock, AlertTriangle } from "lucide-react";
 
 type UploadStatus = "uploaded" | "pending" | "failed";
 
-interface Inspection {
-  id: string;
-  serialNumber: string;
+// Mirrors the InspectionRow struct from the Rust `get_inspections` command.
+interface InspectionRow {
+  id: number;
+  uuid: string;
+  serial: string;
+  manufacturer: string;
   model: string;
-  date: string;
   inspector: string;
   lot: string;
-  uploadStatus: UploadStatus;
-  isDuplicate?: boolean;
+  timestamp: string;
+  grade: string;
+  uploaded: boolean;
 }
 
-const mockInspections: Inspection[] = [
-  {
-    id: "1",
-    serialNumber: "5CD124NJWZ",
-    model: "HP ProBook 440 G8",
-    date: "2026-06-08 10:23",
-    inspector: "Ravikiran K.",
-    lot: "CLY-003",
-    uploadStatus: "pending",
-    isDuplicate: false,
-  },
-  {
-    id: "2",
-    serialNumber: "5CD125PQRS",
-    model: "HP ProBook 440 G8",
-    date: "2026-06-08 10:15",
-    inspector: "Ravikiran K.",
-    lot: "CLY-003",
-    uploadStatus: "pending",
-    isDuplicate: false,
-  },
-  {
-    id: "3",
-    serialNumber: "5CD126TUVW",
-    model: "HP EliteBook 840 G7",
-    date: "2026-06-08 10:08",
-    inspector: "Ravikiran K.",
-    lot: "CLY-003",
-    uploadStatus: "failed",
-    isDuplicate: false,
-  },
-  {
-    id: "4",
-    serialNumber: "5CD127XYZA",
-    model: "HP ProBook 450 G8",
-    date: "2026-06-08 09:58",
-    inspector: "Ravikiran K.",
-    lot: "CLY-003",
-    uploadStatus: "uploaded",
-    isDuplicate: false,
-  },
-  {
-    id: "5",
-    serialNumber: "5CD128BCDE",
-    model: "HP ProBook 440 G8",
-    date: "2026-06-08 09:45",
-    inspector: "Priya S.",
-    lot: "CLY-003",
-    uploadStatus: "uploaded",
-    isDuplicate: false,
-  },
-  {
-    id: "6",
-    serialNumber: "5CD125PQRS",
-    model: "HP ProBook 440 G8",
-    date: "2026-06-07 16:30",
-    inspector: "Mohamed A.",
-    lot: "CLY-002",
-    uploadStatus: "uploaded",
-    isDuplicate: true,
-  },
-];
-
 export function InspectionManager() {
+  const [rows, setRows] = useState<InspectionRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeLot, setActiveLot] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [filterMode, setFilterMode] = useState<"all" | "current-lot" | "pending" | "uploaded" | "failed" | "duplicates">("all");
+
+  const loadInspections = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await invoke<InspectionRow[]>("get_inspections");
+      setRows(data);
+    } catch (err) {
+      console.error("Failed to load inspections:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadInspections();
+    invoke<{ lotName: string }>("get_session")
+      .then((s) => setActiveLot(s.lotName))
+      .catch(() => {});
+  }, [loadInspections]);
+
+  const [detail, setDetail] = useState<string | null>(null);
+
+  const handleView = async (uuid: string) => {
+    try {
+      const json = await invoke<string>("get_inspection_detail", { uuid });
+      try {
+        setDetail(JSON.stringify(JSON.parse(json), null, 2));
+      } catch {
+        setDetail(json);
+      }
+    } catch (err) {
+      alert(`Failed to load record: ${err}`);
+    }
+  };
+
+  const handleExport = async (uuid: string) => {
+    try {
+      const path = await invoke<string | null>("export_inspection", { uuid });
+      if (path) alert(`Exported to:\n${path}`);
+    } catch (err) {
+      alert(`Failed to export record: ${err}`);
+    }
+  };
+
+  const handleDelete = async (uuid: string, serial: string) => {
+    if (!window.confirm(`Delete inspection "${serial || uuid}"? This cannot be undone.`)) {
+      return;
+    }
+    try {
+      await invoke("delete_inspection", { uuid });
+      await loadInspections();
+    } catch (err) {
+      alert(`Failed to delete record: ${err}`);
+    }
+  };
+
+  // Count serials to flag duplicates.
+  const serialCounts = rows.reduce<Record<string, number>>((acc, r) => {
+    if (r.serial) acc[r.serial] = (acc[r.serial] || 0) + 1;
+    return acc;
+  }, {});
+
+  const mockInspections = rows.map((r) => ({
+    id: String(r.id),
+    uuid: r.uuid,
+    serialNumber: r.serial,
+    model: r.model,
+    date: r.timestamp,
+    inspector: r.inspector,
+    lot: r.lot,
+    uploadStatus: (r.uploaded ? "uploaded" : "pending") as UploadStatus,
+    isDuplicate: !!r.serial && serialCounts[r.serial] > 1,
+  }));
 
   const getStatusBadge = (status: UploadStatus) => {
     switch (status) {
@@ -119,7 +136,7 @@ export function InspectionManager() {
     let matchesFilter = true;
     switch (filterMode) {
       case "current-lot":
-        matchesFilter = inspection.lot === "CLY-003";
+        matchesFilter = inspection.lot === activeLot;
         break;
       case "pending":
         matchesFilter = inspection.uploadStatus === "pending";
@@ -237,7 +254,9 @@ export function InspectionManager() {
         <div className="p-4 border-b border-slate-200">
           <h3 className="text-slate-700">Inspection Records</h3>
           <p className="text-xs text-slate-500 mt-0.5">
-            {filteredInspections.length} record{filteredInspections.length !== 1 ? "s" : ""} found
+            {loading
+              ? "Loading…"
+              : `${filteredInspections.length} record${filteredInspections.length !== 1 ? "s" : ""} found`}
           </p>
         </div>
 
@@ -269,6 +288,13 @@ export function InspectionManager() {
               </tr>
             </thead>
             <tbody>
+              {!loading && filteredInspections.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-slate-400">
+                    No inspection records found.
+                  </td>
+                </tr>
+              )}
               {filteredInspections.map((inspection) => (
                 <tr
                   key={inspection.id}
@@ -293,15 +319,26 @@ export function InspectionManager() {
                   <td className="px-4 py-3">{getStatusBadge(inspection.uploadStatus)}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <button className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-600 px-2 py-1 rounded transition-colors">
+                      <button
+                        onClick={() => handleView(inspection.uuid)}
+                        className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-600 px-2 py-1 rounded transition-colors"
+                      >
                         <Eye size={12} className="inline mr-1" />
                         View
                       </button>
-                      <button className="text-xs bg-slate-50 hover:bg-slate-100 text-slate-600 px-2 py-1 rounded transition-colors">
+                      <button
+                        onClick={() => handleExport(inspection.uuid)}
+                        className="text-xs bg-slate-50 hover:bg-slate-100 text-slate-600 px-2 py-1 rounded transition-colors"
+                      >
                         <Download size={12} className="inline mr-1" />
                         Export
                       </button>
-                      <button className="text-xs bg-red-50 hover:bg-red-100 text-red-600 px-2 py-1 rounded transition-colors">
+                      <button
+                        onClick={() =>
+                          handleDelete(inspection.uuid, inspection.serialNumber)
+                        }
+                        className="text-xs bg-red-50 hover:bg-red-100 text-red-600 px-2 py-1 rounded transition-colors"
+                      >
                         <Trash2 size={12} className="inline mr-1" />
                         Delete
                       </button>
@@ -313,6 +350,26 @@ export function InspectionManager() {
           </table>
         </div>
       </div>
+
+      {/* Record detail modal */}
+      {detail !== null && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[80vh] flex flex-col">
+            <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+              <h3 className="text-slate-800">Inspection Record</h3>
+              <button
+                onClick={() => setDetail(null)}
+                className="text-sm text-slate-500 hover:text-slate-700"
+              >
+                Close
+              </button>
+            </div>
+            <pre className="p-4 overflow-auto text-xs text-slate-700 font-mono whitespace-pre-wrap">
+              {detail}
+            </pre>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

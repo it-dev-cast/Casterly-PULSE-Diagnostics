@@ -1,0 +1,23 @@
+[Unit]
+Description=Casterly Pulse USB V4
+After=display-manager.service
+
+[Service]
+Type=simple
+User=ubuntu
+
+# The app opens its SQLite database (udiag.db) and writes exports/ using
+# relative paths, expecting to run from /opt/casterly/pulse (see
+# src-tauri/src/database/sqlite.rs and export_inspection_files in lib.rs).
+# Without this, systemd's default WorkingDirectory of "/" would silently
+# create/open udiag.db at the filesystem root instead.
+WorkingDirectory=/opt/casterly/pulse
+
+Environment=DISPLAY=:0
+ExecStartPre=/bin/sleep 3
+ExecStart=/opt/casterly/pulse/udiag4
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical.target

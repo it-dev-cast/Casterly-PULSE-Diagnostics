@@ -1,0 +1,18 @@
+# PULSE 4.0 — passwordless sudo for hardware collectors
+#
+# Allows the application to run its privileged read-only hardware collectors
+# without an interactive password prompt. Install on the bootable Ubuntu image:
+#
+#   sudo cp pulse-collectors /etc/sudoers.d/pulse-collectors
+#   sudo chown root:root      /etc/sudoers.d/pulse-collectors
+#   sudo chmod 0440           /etc/sudoers.d/pulse-collectors
+#   sudo visudo -cf /etc/sudoers.d/pulse-collectors   # validate syntax
+#
+# Replace "pulse" below with the actual login user on the bootable image.
+# (To grant to every sudo-group user instead, use "%sudo" in place of "pulse".)
+
+Cmnd_Alias PULSE_HW = /usr/sbin/dmidecode, /usr/bin/dmidecode, \
+                      /usr/sbin/smartctl, /usr/bin/smartctl, \
+                      /usr/sbin/nvme,     /usr/bin/nvme
+
+pulse ALL=(root) NOPASSWD: PULSE_HW

@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { Header } from "./components/Header";
 import {
   WorkflowSidebar,
@@ -27,7 +28,10 @@ import { SyncStatus } from "./components/screens/SyncStatus";
 import { InspectionManager } from "./components/screens/InspectionManager";
 import { DuplicateDetection } from "./components/screens/DuplicateDetection";
 import { InspectionSaveConfirmation } from "./components/screens/InspectionSaveConfirmation";
-import { Toaster } from "./components/ui/sonner";
+import { useInspection } from "./context/InspectionContext";
+import { buildInspectionRun } from "./lib/report";
+import { buildInspectionPdf, uint8ToBase64 } from "./lib/pdf";
+import { message } from "@tauri-apps/plugin-dialog";
 
 const STAGE_ORDER = [
   "system-scan",
@@ -43,8 +47,26 @@ const STAGE_ORDER = [
 ];
 
 export default function App() {
+  const { data } = useInspection();
   const [currentScreen, setCurrentScreen] =
     useState<string>("startup-home");
+  // Holds the assembled inspection payload when a duplicate is detected, so the
+  // InspectionSaveConfirmation "Save Anyway" action can persist it.
+  const [pendingSave, setPendingSave] = useState<{
+    lotName: string;
+    inspector: string;
+    jsonData: string;
+  } | null>(null);
+  // The saved inspection record shown on the InspectionComplete screen (PRD §322).
+  const [completedInfo, setCompletedInfo] = useState<{
+    uuid: string;
+    timestamp: string;
+    lotName: string;
+    inspector: string;
+    serial: string;
+    deviceModel: string;
+    grade: string;
+  } | null>(null);
   const [stages, setStages] =
     useState<WorkflowStage[]>(defaultStages);
   const [showSummaryDrawer, setShowSummaryDrawer] =
@@ -56,6 +78,335 @@ export default function App() {
   const [screenWidth, setScreenWidth] = useState(
     typeof window !== "undefined" ? window.innerWidth : 1920,
   );
+  const [session, setSession] = useState<{
+    lotName: string;
+    inspectorName: string;
+  }>({ lotName: "", inspectorName: "" });
+  // Real activity log for the Progress Metrics panel (replaces mock timeline
+  // entries). Populated as stages actually complete, with real timestamps.
+  const [activityLog, setActivityLog] = useState<
+    { label: string; time: number }[]
+  >([]);
+
+  const refreshSession = useCallback(async () => {
+    try {
+      const s = await invoke<{ lotName: string; inspectorName: string }>(
+        "get_session",
+      );
+      setSession(s);
+    } catch (err) {
+      console.error("Failed to load session:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshSession();
+  }, [refreshSession]);
+
+  // Kiosk mode: the window itself is fullscreen/borderless/skip-taskbar
+  // (configured in tauri.conf.json + reasserted in Rust setup()), but the
+  // WebView still passes through browser-level shortcuts and the right-click
+  // context menu unless we block them here. Alt+F4 is intentionally left
+  // untouched as an escape hatch for technicians.
+  useEffect(() => {
+    const blockContextMenu = (e: MouseEvent) => e.preventDefault();
+    const blockKeys = (e: KeyboardEvent) => {
+      const key = e.key.toLowerCase();
+      const blocked =
+        key === "f5" ||
+        key === "f12" ||
+        key === "f11" ||
+        ((e.ctrlKey || e.metaKey) && key === "r") ||
+        ((e.ctrlKey || e.metaKey) && key === "p") ||
+        ((e.ctrlKey || e.metaKey) && e.shiftKey && (key === "i" || key === "j" || key === "c"));
+      if (blocked) e.preventDefault();
+    };
+
+    document.addEventListener("contextmenu", blockContextMenu);
+    document.addEventListener("keydown", blockKeys);
+
+    return () => {
+      document.removeEventListener("contextmenu", blockContextMenu);
+      document.removeEventListener("keydown", blockKeys);
+    };
+  }, []);
+
+  const handleSelectLOT = async (id: string) => {
+    try {
+      await invoke("select_lot", { id: Number(id) });
+      await refreshSession();
+    } catch (err) {
+      console.error("Failed to select LOT:", err);
+    }
+    setCurrentScreen("startup-home");
+  };
+
+  const handleSelectInspector = async (id: string) => {
+    try {
+      await invoke("select_inspector", { id: Number(id) });
+      await refreshSession();
+    } catch (err) {
+      console.error("Failed to select inspector:", err);
+    }
+    setCurrentScreen("startup-home");
+  };
+
+  const handleSyncNow = async () => {
+    try {
+      await invoke("sync_now");
+    } catch (err) {
+      console.error("Sync failed:", err);
+    }
+    setCurrentScreen("sync-status");
+  };
+
+  // Assemble the InspectionRun payload (PRD §11.6) from the inspection context.
+  // uuid / usb_id / inspector / lot_name / timestamp / uploaded are injected by
+  // the Rust save_inspection command.
+  const buildInspectionPayload = (): string => {
+    const g = data.grading;
+    const up = (v: string | null) =>
+      v === "pass" ? "PASS" : v === "fail" ? "FAIL" : "PENDING";
+
+    const batteryHealth =
+      data.batteryInfo && data.batteryInfo.design_capacity_mwh > 0
+        ? Number(
+            (
+              (data.batteryInfo.full_charge_capacity_mwh /
+                data.batteryInfo.design_capacity_mwh) *
+              100
+            ).toFixed(2),
+          )
+        : null;
+
+    return JSON.stringify({
+      battery_health: batteryHealth,
+      grading: {
+        lcd_status: up(g.grades.lcd),
+        lcd_defects: g.selectedDefects.lcd || [],
+        top_cover_status: up(g.grades.topCover),
+        top_cover_defects: g.selectedDefects.topCover || [],
+        bezel_status: up(g.grades.bezel),
+        bezel_defects: g.selectedDefects.bezel || [],
+        palmrest_status: up(g.grades.palmrest),
+        palmrest_defects: g.selectedDefects.palmrest || [],
+        bottom_cover_status: up(g.grades.bottomCover),
+        bottom_cover_defects: g.selectedDefects.bottomCover || [],
+        keyboard_status: up(g.grades.keyboard),
+        keyboard_defects: g.selectedDefects.keyboard || [],
+        touchpad_status: up(g.grades.touchpad),
+        remarks: g.remarks,
+      },
+      speaker_test: { result: up(data.speakerTest.result) },
+      webcam_test: { result: up(data.webcamTest.result) },
+      keyboard_test: {
+        result: up(data.keyboardTest.result),
+        unique_keys: data.keyboardTest.pressed?.length || 0,
+      },
+      touchpad_test: { result: up(data.touchpadTest.result) },
+      battery_assessment: { result: up(data.batteryAssessment.result) },
+      inventory: {
+        system: data.systemInfo,
+        cpu: data.cpuInfo,
+        memory: data.memoryInfo,
+        storage: data.storageInfo,
+        battery: data.batteryInfo,
+        bios: (data as any).biosInfo,
+        gpu: data.gpuInfo,
+        display: data.displayInfo,
+        network: data.networkInfo,
+        audio: data.audioInfo,
+        camera: data.cameraInfo,
+      },
+    });
+  };
+
+  // Final grade (PRD §322): C if any component fails, A if all pass, else B.
+  const computeGrade = (): string => {
+    const grades = Object.values(data.grading.grades);
+    if (grades.some((g) => g === "fail")) return "C";
+    if (grades.length > 0 && grades.every((g) => g === "pass")) return "A";
+    return "B";
+  };
+
+  // Persist a payload, record the saved details, and route to InspectionComplete.
+  const persistInspection = async (info: {
+    lotName: string;
+    inspector: string;
+    jsonData: string;
+  }) => {
+    const result = await invoke<{ uuid: string; timestamp: string }>(
+      "save_inspection",
+      {
+        lotName: info.lotName,
+        inspector: info.inspector,
+        jsonData: info.jsonData,
+      },
+    );
+    const grade = computeGrade();
+    setCompletedInfo({
+      uuid: result.uuid,
+      timestamp: result.timestamp,
+      lotName: info.lotName,
+      inspector: info.inspector,
+      serial: data.systemInfo?.serial_number || "",
+      deviceModel: data.systemInfo?.model || "",
+      grade,
+    });
+    setPendingSave(null);
+
+    // Export a JSON + PDF copy of this inspection to the pendrive, and
+    // best-effort upload both files to Supabase Storage (bucket "PULSE").
+    // Shows a confirmation message depending on which destinations succeeded.
+    try {
+      const run = buildInspectionRun(data, info.lotName, info.inspector, grade);
+      run.uuid = result.uuid;
+      run.timestamp = result.timestamp;
+      const pdfBytes = buildInspectionPdf(run);
+      const pdfBase64 = uint8ToBase64(pdfBytes);
+
+      const exportResult = await invoke<{
+        localSaved: boolean;
+        cloudUploaded: boolean;
+      }>("export_inspection_files", {
+        uuid: result.uuid,
+        pdfBase64,
+      });
+
+      console.log("Export result:", exportResult);
+
+      if (exportResult.cloudUploaded) {
+        await message("Inspection saved and exported successfully to the server", {
+          title: "Inspection Saved",
+          kind: "info",
+        });
+      } else if (exportResult.localSaved) {
+        await message("Inspection saved in the Pendrive successfully", {
+          title: "Inspection Saved",
+          kind: "info",
+        });
+      } else {
+        await message(
+          "Inspection saved, but exporting the JSON/PDF copy failed. Please check the USB drive and try again.",
+          { title: "Inspection Saved", kind: "warning" },
+        );
+      }
+    } catch (err) {
+      console.error("Export to file failed:", err);
+      await message("Inspection saved, but export failed: " + err, {
+        title: "Inspection Saved",
+        kind: "warning",
+      });
+    }
+
+    // Mark the "Final Review" stage as passed in the sidebar (green check),
+    // same as every other stage does when it completes. This screen doesn't
+    // go through advanceStageAndView like the others, so it needs an explicit
+    // call here — otherwise it stays stuck on the blue "active" spinner even
+    // though the inspection has actually been saved.
+    advanceStage("final-review");
+    // advanceStage("final-review") flips "Inspection Complete" from pending to
+    // active (it's the next stage in STAGE_ORDER), but nothing ever marks it
+    // passed since it's the last stage and no further screen calls
+    // advanceStage for it. Do that explicitly here so its sidebar entry also
+    // gets the green checkmark once we actually land on this screen.
+    advanceStage("inspection-complete");
+
+    setCurrentScreen("inspection-complete");
+
+    // Best-effort: push the saved inspection (incl. full System Scan) to Supabase.
+    invoke("sync_now")
+      .then((r) => console.log("Sync result:", r))
+      .catch((err) => console.error("Sync failed (will retry from queue):", err));
+  };
+
+  // FinalReview "Save & Complete": run duplicate detection, then either route to
+  // the confirmation screen (duplicate) or save and go to InspectionComplete.
+  const handleFinalReviewComplete = async () => {
+    const serial = data.systemInfo?.serial_number || "";
+    let lotName = "";
+    let inspector = "";
+    try {
+      const s = await invoke<{ lotName: string; inspectorName: string }>(
+        "get_session",
+      );
+      lotName = s.lotName;
+      inspector = s.inspectorName;
+    } catch (err) {
+      console.error("Failed to load session:", err);
+    }
+
+    const jsonData = buildInspectionPayload();
+
+    try {
+      const duplicate = serial
+        ? await invoke<boolean>("check_duplicate", {
+            serialNumber: serial,
+            lotName,
+          })
+        : false;
+
+      if (duplicate) {
+        setPendingSave({ lotName, inspector, jsonData });
+        setCurrentScreen("inspection-save-confirmation");
+        return;
+      }
+
+      await persistInspection({ lotName, inspector, jsonData });
+    } catch (err) {
+      console.error("Failed to save inspection:", err);
+      await message(`Failed to save inspection: ${err}`, {
+        title: "Save Failed",
+        kind: "error",
+      });
+    }
+  };
+
+  // InspectionSaveConfirmation "Save Anyway": persist the pending payload.
+  const handleSaveAnyway = async () => {
+    const payload =
+      pendingSave ?? {
+        lotName: "",
+        inspector: "",
+        jsonData: buildInspectionPayload(),
+      };
+    try {
+      await persistInspection(payload);
+    } catch (err) {
+      console.error("Failed to save inspection:", err);
+      await message(`Failed to save inspection: ${err}`, {
+        title: "Save Failed",
+        kind: "error",
+      });
+    }
+  };
+
+  // FinalReview "Save Draft": persist the current inspection and return home,
+  // skipping the completion screen.
+  const handleSaveDraft = async () => {
+    let lotName = "";
+    let inspector = "";
+    try {
+      const s = await invoke<{ lotName: string; inspectorName: string }>(
+        "get_session",
+      );
+      lotName = s.lotName;
+      inspector = s.inspectorName;
+    } catch (err) {
+      console.error("Failed to load session:", err);
+    }
+    try {
+      await invoke<{ uuid: string; timestamp: string }>("save_inspection", {
+        lotName,
+        inspector,
+        jsonData: buildInspectionPayload(),
+      });
+      setCurrentScreen("startup-home");
+    } catch (err) {
+      console.error("Failed to save draft:", err);
+      alert(`Failed to save draft: ${err}`);
+    }
+  };
 
   useEffect(() => {
     const handleResize = () => {
@@ -77,20 +428,48 @@ export default function App() {
   const advanceStage = (currentId: string) => {
     const idx = STAGE_ORDER.indexOf(currentId);
     const nextId = STAGE_ORDER[idx + 1];
+    let didAdvance = false;
 
-    setStages((prev) =>
-      prev.map((s) => {
+    setStages((prev) => {
+      const current = prev.find((s) => s.id === currentId);
+      // Only advance if this stage is currently the active one. This guards
+      // against re-triggering when the user navigates back to a completed stage
+      // or when an effect fires on a re-mount.
+      if (!current || current.status !== "active") {
+        return prev;
+      }
+
+      didAdvance = true;
+      return prev.map((s) => {
         if (s.id === currentId)
           return { ...s, status: "passed" as StageStatus };
-        if (s.id === nextId)
+        if (s.id === nextId && s.status === "pending")
           return { ...s, status: "active" as StageStatus };
         return s;
-      }),
-    );
+      });
+    });
 
-    if (nextId) {
+    if (nextId && didAdvance) {
       setWorkflowStage(nextId);
-      //setIsDashboard(false);
+    }
+
+    if (didAdvance) {
+      const label =
+        defaultStages.find((s) => s.id === currentId)?.label ?? currentId;
+      setActivityLog((prev) => [
+        ...prev,
+        { label: `${label} Passed`, time: Date.now() },
+      ]);
+    }
+  };
+
+  // For stages that run automatically, advance both execution state and view.
+  const advanceStageAndView = (currentId: string) => {
+    const idx = STAGE_ORDER.indexOf(currentId);
+    const nextId = STAGE_ORDER[idx + 1];
+    advanceStage(currentId);
+    if (nextId) {
+      setCurrentScreen(nextId);
     }
   };
 
@@ -103,7 +482,7 @@ export default function App() {
   };
 
   const startInspection = () => {
-    
+
     setStages(
       defaultStages.map((s, i) => ({
         ...s,
@@ -113,6 +492,7 @@ export default function App() {
             : ("pending" as StageStatus),
       })),
     );
+    setActivityLog([{ label: "Inspection Started", time: Date.now() }]);
     setWorkflowStage("system-scan");
     setCurrentScreen("system-scan");
   };
@@ -130,13 +510,62 @@ export default function App() {
     (s) => s.status === "pending",
   ).length;
 
-  const alerts = [
-    {
-      type: "warning" as const,
-      message: "Battery below 80% threshold",
-    },
-    { type: "info" as const, message: "System scan complete" },
-  ];
+  // Real alerts derived from the live inspection data (replaces mock list).
+  const gradeLabels: Record<string, string> = {
+    lcd: "LCD",
+    topCover: "Top Cover",
+    bezel: "Bezel",
+    palmrest: "Palmrest",
+    bottomCover: "Bottom Cover",
+    keyboard: "Keyboard",
+    touchpad: "Touchpad",
+  };
+
+  const alerts: { type: "warning" | "error" | "info"; message: string }[] = (() => {
+    const list: { type: "warning" | "error" | "info"; message: string }[] = [];
+
+    const batt = data.batteryInfo as any;
+    const battHealth =
+      batt && batt.design_capacity_mwh > 0
+        ? Math.round(
+            (batt.full_charge_capacity_mwh / batt.design_capacity_mwh) * 100,
+          )
+        : null;
+    if (battHealth != null && battHealth < 80) {
+      list.push({
+        type: "warning",
+        message: `Battery health at ${battHealth}%, below 80% threshold`,
+      });
+    }
+
+    if (data.scanCompleted) {
+      list.push({ type: "info", message: "System scan complete" });
+    }
+
+    Object.entries(data.grading.grades).forEach(([key, value]) => {
+      if (value === "fail") {
+        list.push({
+          type: "warning",
+          message: `${gradeLabels[key] || key} failed cosmetic grading`,
+        });
+      }
+    });
+
+    const testResults: { label: string; result: string | null }[] = [
+      { label: "Speaker test", result: data.speakerTest.result },
+      { label: "Webcam test", result: data.webcamTest.result },
+      { label: "Keyboard test", result: data.keyboardTest.result },
+      { label: "Touchpad test", result: data.touchpadTest.result },
+      { label: "Battery assessment", result: data.batteryAssessment.result },
+    ];
+    testResults.forEach(({ label, result }) => {
+      if (result === "fail") {
+        list.push({ type: "error", message: `${label} failed` });
+      }
+    });
+
+    return list;
+  })();
 
   const renderScreen = () => {
     switch (currentScreen) {
@@ -157,21 +586,19 @@ export default function App() {
               setCurrentScreen("upload-queue")
             }
             onSettings={() => {}}
-            onSyncNow={() => setCurrentScreen("sync-status")}
+            onSyncNow={handleSyncNow}
           />
         );
       case "inspector-management":
         return (
           <InspectorManagement
-            onSelectInspector={() =>
-              setCurrentScreen("startup-home")
-            }
+            onSelectInspector={handleSelectInspector}
           />
         );
       case "lot-management":
         return (
           <LOTManagement
-            onSelectLOT={() => setCurrentScreen("startup-home")}
+            onSelectLOT={handleSelectLOT}
           />
         );
       case "active-lot-summary":
@@ -195,9 +622,7 @@ export default function App() {
       case "inspection-save-confirmation":
         return (
           <InspectionSaveConfirmation
-            onSave={() =>
-              setCurrentScreen("inspection-complete")
-            }
+            onSave={handleSaveAnyway}
             onSaveDraft={() => setCurrentScreen("startup-home")}
             onCancel={() => setCurrentScreen("final-review")}
           />
@@ -207,13 +632,15 @@ export default function App() {
       case "system-scan":
         return (
           <SystemScan
-            onNext={() => advanceStage("system-scan")}
+            onNext={() => advanceStageAndView("system-scan")}
+            isExecutionActive={currentScreen === workflowStage}
           />
         );
       case "hardware-inventory":
         return (
           <HardwareInventory
-            onNext={() => advanceStage("hardware-inventory")}
+            onNext={() => advanceStageAndView("hardware-inventory")}
+            isExecutionActive={currentScreen === workflowStage}
           />
         );
       case "manual-grading":
@@ -255,14 +682,20 @@ export default function App() {
       case "final-review":
         return (
           <FinalReview
-            onComplete={() =>
-              setCurrentScreen("inspection-save-confirmation")
-            }
+            onComplete={handleFinalReviewComplete}
+            onSaveDraft={handleSaveDraft}
           />
         );
       case "inspection-complete":
         return (
           <InspectionComplete
+            uuid={completedInfo?.uuid}
+            timestamp={completedInfo?.timestamp}
+            lotName={completedInfo?.lotName}
+            inspector={completedInfo?.inspector}
+            serial={completedInfo?.serial}
+            deviceModel={completedInfo?.deviceModel}
+            grade={completedInfo?.grade}
             onNewInspection={startInspection}
             onHome={() => setCurrentScreen("startup-home")}
           />
@@ -284,7 +717,7 @@ export default function App() {
               setCurrentScreen("upload-queue")
             }
             onSettings={() => {}}
-            onSyncNow={() => setCurrentScreen("sync-status")}
+            onSyncNow={handleSyncNow}
           />
         );
     }
@@ -311,11 +744,13 @@ export default function App() {
         onSaveDraft={() => {}}
         onSaveInspection={() => {}}
         isInspectionActive={showInWorkflow}
+        lotName={session.lotName}
+        inspectorName={session.inspectorName}
       />
 
       <WorkflowSidebar
         stages={stages}
-        currentStage={workflowStage || currentScreen}
+        currentStage={currentScreen}
         onStageClick={goToStage}
         completionPct={completionPct}
         estimatedRemaining={`${Math.max(0, remaining * 3)}m`}
@@ -324,7 +759,7 @@ export default function App() {
 
       {/* Main content with responsive padding */}
       <main
-        className={`pt-14 pl-64 min-h-screen transition-all duration-300 ${
+        className={`pt-16 pl-64 min-h-screen transition-all duration-300 ${
           layoutMode === "compact"
             ? "pr-0"
             : layoutMode === "standard"
@@ -347,13 +782,14 @@ export default function App() {
           alerts={alerts}
           elapsedTime="00:22"
           currentStage={currentScreen}
+          activityLog={activityLog}
         />
       )}
 
       {/* Standard mode - Collapsible panel */}
       {showInWorkflow && layoutMode === "standard" && (
         <div
-          className={`fixed right-0 top-14 bottom-0 bg-white border-l border-slate-200 z-40 transition-all duration-300 ${
+          className={`fixed right-0 top-16 bottom-0 bg-white border-l border-slate-200 z-40 transition-all duration-300 ${
             rightPanelCollapsed ? "w-10" : "w-[280px]"
           }`}
         >
@@ -393,6 +829,7 @@ export default function App() {
               alerts={alerts}
               elapsedTime="00:22"
               currentStage={currentScreen}
+              activityLog={activityLog}
             />
           )}
         </div>
@@ -463,6 +900,7 @@ export default function App() {
                     alerts={alerts}
                     elapsedTime="00:22"
                     currentStage={currentScreen}
+                    activityLog={activityLog}
                   />
                 </div>
               </div>
@@ -470,9 +908,6 @@ export default function App() {
           )}
         </>
       )}
-
-      {/* Global toast host — renders save success/failure popups (sonner) */}
-      <Toaster richColors position="top-center" />
     </div>
   );
 }

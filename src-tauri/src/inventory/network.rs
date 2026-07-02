@@ -8,11 +8,6 @@ use crate::models::device::NetworkInfo;
 pub fn collect()
 -> Result<Option<NetworkInfo>>
 {
-    // WSL shows only the virtual eth0 — use the Windows host's real adapters.
-    if crate::inventory::wslhost::is_wsl() {
-        return Ok(crate::inventory::wslhost::network());
-    }
-
     let output =
         Command::new(
             "lspci"

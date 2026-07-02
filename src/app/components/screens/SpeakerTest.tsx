@@ -1,5 +1,7 @@
-import { useState, useRef } from "react";
-import { Play, RotateCcw, CheckCircle2, XCircle, Volume2, ChevronRight } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { Play, CheckCircle2, XCircle, Volume2, ChevronRight, Loader2 } from "lucide-react";
+import { useInspection } from "../../context/InspectionContext";
+import { invoke } from "@tauri-apps/api/core";
 
 type TestResult = "pass" | "fail" | null;
 
@@ -8,38 +10,86 @@ interface SpeakerTestProps {
 }
 
 export function SpeakerTest({ onNext }: SpeakerTestProps) {
-  const [result, setResult] = useState<TestResult>(null);
+  const { data, setData } = useInspection();
+  const [result, setResult] = useState<TestResult>(data.speakerTest.result);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  // Track whether audio has finished playing. Pass/Fail are enabled only after this.
+  const [hasFinished, setHasFinished] = useState(false);
+  const [durationSec, setDurationSec] = useState(10);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isMounted = useRef(true);
 
-  const startPlay = () => {
-    setIsPlaying(true);
-    setProgress(0);
-    timerRef.current = setInterval(() => {
-      setProgress((p) => {
-        if (p >= 100) {
-          clearInterval(timerRef.current!);
-          setIsPlaying(false);
-          return 100;
-        }
-        return p + 1;
-      });
-    }, 100);
-  };
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, []);
 
-  const replay = () => {
-    if (timerRef.current) clearInterval(timerRef.current);
+  // Persist the pass/fail result into context.
+  useEffect(() => {
+    if (data.speakerTest.result !== result) {
+      setData((prev) => ({
+        ...prev,
+        speakerTest: { ...prev.speakerTest, result },
+      }));
+    }
+  }, [result, setData, data.speakerTest.result]);
+
+  const resetPlayback = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
     setIsPlaying(false);
     setProgress(0);
-    setTimeout(startPlay, 100);
+    setHasFinished(false);
+  };
+
+  const startPlay = async () => {
+    setError(null);
+    resetPlayback();
+    setIsPlaying(true);
+
+    try {
+      // This returns immediately; audio playback runs in the background.
+      const durationMs = await invoke<number>("play_speaker_test");
+      const durationSeconds = Math.max(1, Math.round(durationMs / 1000));
+      setDurationSec(durationSeconds);
+
+      const startTime = Date.now();
+      timerRef.current = setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        const pct = Math.min(100, Math.round((elapsed / durationMs) * 100));
+        if (!isMounted.current) {
+          if (timerRef.current) clearInterval(timerRef.current);
+          return;
+        }
+        setProgress(pct);
+        if (pct >= 100) {
+          if (timerRef.current) {
+            clearInterval(timerRef.current);
+            timerRef.current = null;
+          }
+          setIsPlaying(false);
+          setHasFinished(true);
+        }
+      }, 50);
+    } catch (err: any) {
+      console.error("Speaker playback failed", err);
+      resetPlayback();
+      setError(typeof err === "string" ? err : err?.message || "Playback failed");
+    }
   };
 
   const handleResult = (res: TestResult) => {
     setResult(res);
-    if (timerRef.current) clearInterval(timerRef.current);
-    setIsPlaying(false);
-    setProgress(0);
+    resetPlayback();
   };
 
   return (
@@ -81,6 +131,12 @@ export function SpeakerTest({ onNext }: SpeakerTestProps) {
               )}
             </div>
 
+            {error && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                {error}
+              </div>
+            )}
+
             {/* Waveform animation */}
             <div className="flex items-center justify-center gap-1 h-20 bg-slate-50 rounded-lg mb-5">
               {Array.from({ length: 40 }).map((_, i) => (
@@ -95,7 +151,7 @@ export function SpeakerTest({ onNext }: SpeakerTestProps) {
             </div>
 
             {/* Progress bar */}
-            {isPlaying && (
+            {(isPlaying || progress > 0) && (
               <div className="mb-5">
                 <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
                   <div
@@ -104,8 +160,8 @@ export function SpeakerTest({ onNext }: SpeakerTestProps) {
                   />
                 </div>
                 <div className="flex justify-between text-xs text-slate-400 mt-1">
-                  <span>{Math.round(progress / 10)}s</span>
-                  <span>10s</span>
+                  <span>{Math.round((progress / 100) * durationSec)}s</span>
+                  <span>{durationSec}s</span>
                 </div>
               </div>
             )}
@@ -115,37 +171,34 @@ export function SpeakerTest({ onNext }: SpeakerTestProps) {
               <span className="text-sm text-blue-700">Listen for audio from both left and right speakers</span>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 mb-4">
+            <div className="mb-4">
               <button
                 onClick={startPlay}
                 disabled={isPlaying}
-                className={`flex items-center justify-center gap-2 py-3 rounded-lg text-sm transition-colors ${
-                  isPlaying ? "bg-slate-100 text-slate-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-500 text-white"
+                className={`w-full flex items-center justify-center gap-2 py-3 rounded-lg text-sm transition-colors ${
+                  isPlaying
+                    ? "bg-slate-100 text-slate-400 cursor-not-allowed"
+                    : "bg-blue-600 hover:bg-blue-500 text-white"
                 }`}
               >
-                <Play size={16} />
+                {isPlaying ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
                 {isPlaying ? "Playing..." : "Play Test"}
-              </button>
-              <button
-                onClick={replay}
-                className="flex items-center justify-center gap-2 py-3 rounded-lg text-sm bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors"
-              >
-                <RotateCcw size={16} />
-                Replay
               </button>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <button
                 onClick={() => handleResult("pass")}
-                className="flex items-center justify-center gap-2 py-3 rounded-lg text-sm bg-emerald-500 hover:bg-emerald-400 text-white transition-colors"
+                disabled={!hasFinished}
+                className="flex items-center justify-center gap-2 py-3 rounded-lg text-sm bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed text-white transition-colors"
               >
                 <CheckCircle2 size={16} />
                 Pass
               </button>
               <button
                 onClick={() => handleResult("fail")}
-                className="flex items-center justify-center gap-2 py-3 rounded-lg text-sm bg-red-500 hover:bg-red-400 text-white transition-colors"
+                disabled={!hasFinished}
+                className="flex items-center justify-center gap-2 py-3 rounded-lg text-sm bg-red-500 hover:bg-red-400 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed text-white transition-colors"
               >
                 <XCircle size={16} />
                 Fail

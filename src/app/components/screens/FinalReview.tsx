@@ -1,3 +1,6 @@
+import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { buildInspectionRun, buildReportHtml, printHtmlReport } from "../../lib/report";
 import {
   CheckCircle2,
   XCircle,
@@ -10,11 +13,12 @@ import {
   Battery,
   Monitor,
   AlertTriangle,
-  Star,
 } from "lucide-react";
+import { useInspection } from "../../context/InspectionContext";
 
 interface FinalReviewProps {
   onComplete: () => void;
+  onSaveDraft?: () => void;
 }
 
 const gradeColors: Record<string, { bg: string; text: string; border: string }> = {
@@ -50,23 +54,89 @@ function ScoreRing({ score }: { score: number }) {
   );
 }
 
-export function FinalReview({ onComplete }: FinalReviewProps) {
+export function FinalReview({ onComplete, onSaveDraft }: FinalReviewProps) {
+  const { data } = useInspection();
+  const grading = data.grading;
+
+  // Active LOT name and inspector come from the session (settings keys
+  // 'active_lot' / 'inspector') — these populate InspectionRun.lot_name and
+  // InspectionRun.inspector per the PRD.
+  const [session, setSession] = useState<{
+    lotName: string;
+    inspectorName: string;
+  }>({ lotName: "", inspectorName: "" });
+
+  useEffect(() => {
+    invoke<{ lotName: string; inspectorName: string }>("get_session")
+      .then(setSession)
+      .catch((err) => console.error("Failed to load session:", err));
+  }, []);
+
+  const manualGradingStatus = Object.values(grading.grades).some((g) => g === "fail")
+    ? "fail"
+    : Object.values(grading.grades).every((g) => g === "pass")
+    ? "pass"
+    : "warn";
+
   const diagResults = [
-    { label: "System Scan", status: "pass" },
-    { label: "Hardware Inventory", status: "pass" },
-    { label: "Manual Grading", status: "pass" },
-    { label: "Speaker Test", status: "pass" },
-    { label: "Webcam Test", status: "pass" },
-    { label: "Keyboard Test", status: "pass" },
-    { label: "Touchpad Test", status: "pass" },
-    { label: "Battery Assessment", status: "warn" },
-  ];
+    { label: "System Scan", status: data.scanCompleted ? "pass" : "warn" },
+    { label: "Hardware Inventory", status: data.scanCompleted ? "pass" : "warn" },
+    { label: "Manual Grading", status: manualGradingStatus },
+    { label: "Speaker Test", status: data.speakerTest.result ?? "warn" },
+    { label: "Webcam Test", status: data.webcamTest.result ?? "warn" },
+    { label: "Keyboard Test", status: data.keyboardTest.result ?? "warn" },
+    { label: "Touchpad Test", status: data.touchpadTest.result ?? "warn" },
+    { label: "Battery Assessment", status: data.batteryAssessment.result ?? "warn" },
+  ] as { label: string; status: "pass" | "fail" | "warn" }[];
 
   const passed = diagResults.filter((d) => d.status === "pass").length;
+  const failed = diagResults.filter((d) => d.status === "fail").length;
   const total = diagResults.length;
-  const score = 82;
-  const suggestedGrade = "B";
+
+  // Score: start at 100, subtract for failures (15 each) and warnings (5 each),
+  // floor at 0.
+  const score = Math.max(0, 100 - failed * 15 - (total - passed - failed) * 5);
+
+  // Cosmetic grade based on manual grading results.
+  const suggestedGrade = (() => {
+    if (manualGradingStatus === "fail") return "C";
+    if (Object.values(grading.grades).every((g) => g === "pass")) return "A";
+    return "B";
+  })();
   const gradeStyle = gradeColors[suggestedGrade];
+
+  const handleExportPdf = () => {
+    const run = buildInspectionRun(
+      data,
+      session.lotName,
+      session.inspectorName,
+      suggestedGrade,
+    );
+    printHtmlReport(buildReportHtml(run));
+  };
+
+  const system = data.systemInfo || {};
+  const primaryDrive = data.storageInfo?.[0];
+  const firstMemoryModule = (data.memoryInfo || []).find((m: any) => !m.is_empty);
+  const totalMemoryGb = (data.memoryInfo || []).reduce((sum: number, m: any) => sum + (m.size_mb || 0), 0) / 1024;
+
+  const batteryHealth = data.batteryInfo && data.batteryInfo.design_capacity_mwh > 0
+    ? Math.round((data.batteryInfo.full_charge_capacity_mwh / data.batteryInfo.design_capacity_mwh) * 100)
+    : null;
+
+  const cosmeticSummary = [
+    { key: "lcd", label: "LCD Screen" },
+    { key: "topCover", label: "Top Cover" },
+    { key: "bezel", label: "Bezel" },
+    { key: "palmrest", label: "Palmrest" },
+    { key: "bottomCover", label: "Bottom Cover" },
+    { key: "keyboard", label: "Keyboard" },
+    { key: "touchpad", label: "Touchpad" },
+  ].map((item) => ({
+    label: item.label,
+    grade: grading.grades[item.key] === "fail" ? "Fail" : grading.grades[item.key] === "pass" ? "Pass" : "Pending",
+    defects: grading.selectedDefects[item.key] || [],
+  }));
 
   return (
     <div className="space-y-5">
@@ -76,7 +146,10 @@ export function FinalReview({ onComplete }: FinalReviewProps) {
           <p className="text-sm text-slate-500 mt-0.5">Comprehensive inspection summary</p>
         </div>
         <div className="flex items-center gap-2">
-          <button className="flex items-center gap-2 text-sm text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 px-3 py-2 rounded-lg transition-colors">
+          <button
+            onClick={handleExportPdf}
+            className="flex items-center gap-2 text-sm text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 px-3 py-2 rounded-lg transition-colors"
+          >
             <Download size={14} />
             Export PDF
           </button>
@@ -107,9 +180,9 @@ export function FinalReview({ onComplete }: FinalReviewProps) {
         <div className="grid grid-cols-2 gap-3 text-center">
           {[
             { label: "Tests Passed", value: `${passed}/${total}`, color: "text-emerald-600" },
-            { label: "Battery Health", value: "78%", color: "text-amber-600" },
-            { label: "Storage Health", value: "94%", color: "text-emerald-600" },
-            { label: "Cosmetic Grade", value: "B+", color: "text-blue-600" },
+            { label: "Battery Health", value: batteryHealth ? `${batteryHealth}%` : "N/A", color: batteryHealth && batteryHealth < 80 ? "text-amber-600" : "text-emerald-600" },
+            { label: "Storage Health", value: primaryDrive?.health_percent ? `${primaryDrive.health_percent}%` : "N/A", color: "text-emerald-600" },
+            { label: "Cosmetic Grade", value: suggestedGrade, color: "text-blue-600" },
           ].map((m) => (
             <div key={m.label} className="bg-slate-50 rounded-lg p-3">
               <div className={`text-lg leading-none ${m.color}`}>{m.value}</div>
@@ -125,11 +198,12 @@ export function FinalReview({ onComplete }: FinalReviewProps) {
           <h3 className="text-slate-700 mb-3">Device Information</h3>
           <div className="space-y-2">
             {[
-              { label: "Manufacturer", value: "HP" },
-              { label: "Model", value: "ProBook 440 G8" },
-              { label: "Serial", value: "5CD124NJWZ" },
-              { label: "Asset Tag", value: "AT-00892" },
-              { label: "LOT", value: "CLY-003" },
+              { label: "Manufacturer", value: system.manufacturer || "—" },
+              { label: "Model", value: system.model || "—" },
+              { label: "Serial", value: system.serial_number || "—" },
+              { label: "UUID", value: system.uuid || "—" },
+              { label: "LOT", value: session.lotName || "—" },
+              { label: "Inspector", value: session.inspectorName || "—" },
             ].map((item) => (
               <div key={item.label} className="flex justify-between">
                 <span className="text-xs text-slate-500">{item.label}</span>
@@ -144,11 +218,11 @@ export function FinalReview({ onComplete }: FinalReviewProps) {
           <h3 className="text-slate-700 mb-3">Hardware Summary</h3>
           <div className="space-y-2.5">
             {[
-              { icon: <Cpu size={13} className="text-blue-500" />, label: "Intel Core i5-1135G7" },
-              { icon: <MemoryStick size={13} className="text-purple-500" />, label: "16 GB DDR4 3200 MHz" },
-              { icon: <HardDrive size={13} className="text-slate-400" />, label: "512 GB NVMe SSD" },
-              { icon: <Battery size={13} className="text-amber-500" />, label: "Battery 78% · 312 cycles" },
-              { icon: <Monitor size={13} className="text-emerald-500" />, label: "14\" FHD IPS" },
+              { icon: <Cpu size={13} className="text-blue-500" />, label: data.cpuInfo?.model || "CPU" },
+              { icon: <MemoryStick size={13} className="text-purple-500" />, label: `${totalMemoryGb.toFixed(1)} GB ${firstMemoryModule?.memory_type || "RAM"}` },
+              { icon: <HardDrive size={13} className="text-slate-400" />, label: `${primaryDrive ? `${primaryDrive.size_gb.toFixed(0)} GB ${primaryDrive.storage_type}` : "Storage"}` },
+              { icon: <Battery size={13} className="text-amber-500" />, label: batteryHealth ? `Battery ${batteryHealth}% · ${data.batteryInfo?.cycle_count ?? 0} cycles` : "No battery" },
+              { icon: <Monitor size={13} className="text-emerald-500" />, label: `${data.displayInfo?.size_inches?.toFixed(1) || "?"}" ${data.displayInfo?.resolution || ""}`.trim() },
             ].map((item, i) => (
               <div key={i} className="flex items-center gap-2">
                 {item.icon}
@@ -171,7 +245,7 @@ export function FinalReview({ onComplete }: FinalReviewProps) {
                 }`}>
                   {item.status === "pass" ? <CheckCircle2 size={11} /> :
                    item.status === "warn" ? <AlertTriangle size={11} /> : <XCircle size={11} />}
-                  {item.status === "pass" ? "Pass" : item.status === "warn" ? "Warn" : "Fail"}
+                  {item.status === "pass" ? "Pass" : item.status === "warn" ? "Pending" : "Fail"}
                 </div>
               </div>
             ))}
@@ -183,38 +257,50 @@ export function FinalReview({ onComplete }: FinalReviewProps) {
       <div className="bg-white rounded-xl border border-slate-200 p-4">
         <h3 className="text-slate-700 mb-3">Cosmetic Grading Summary</h3>
         <div className="flex gap-3 flex-wrap">
-          {[
-            { label: "LCD Screen", grade: "Pass" },
-            { label: "Top Cover", grade: "Pass" },
-            { label: "Bezel", grade: "Pass" },
-            { label: "Palmrest", grade: "Pass" },
-            { label: "Bottom Cover", grade: "Pass" },
-            { label: "Keyboard", grade: "Pass" },
-            { label: "Touchpad", grade: "Pass" },
-          ].map((item) => (
-            <div key={item.label} className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-1.5">
-              <CheckCircle2 size={12} className="text-emerald-600" />
-              <span className="text-xs text-emerald-700">{item.label}</span>
-            </div>
-          ))}
+          {cosmeticSummary.map((item) => {
+            const isFail = item.grade === "Fail";
+            const isPass = item.grade === "Pass";
+            return (
+              <div key={item.label} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 border ${
+                isFail
+                  ? "bg-red-50 border-red-200 text-red-700"
+                  : isPass
+                  ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                  : "bg-slate-50 border-slate-200 text-slate-500"
+              }`}>
+                {isFail ? <XCircle size={12} className="text-red-600" /> :
+                 isPass ? <CheckCircle2 size={12} className="text-emerald-600" /> :
+                 <div className="w-3 h-3 rounded-full border border-slate-300" />}
+                <span className="text-xs">
+                  {item.label} — {item.grade}
+                  {item.defects.length > 0 ? ` (${item.defects.join(", ")})` : ""}
+                </span>
+              </div>
+            );
+          })}
         </div>
       </div>
 
       {/* Remarks */}
       <div className="bg-white rounded-xl border border-slate-200 p-4">
         <h3 className="text-slate-700 mb-2">Technician Remarks</h3>
-        <p className="text-sm text-slate-600 bg-slate-50 rounded-lg p-3 border border-slate-100">
-          Battery health is below recommended 80% threshold. Device otherwise in good condition.
-          Minor keyboard key wear noted but all keys functional. Recommend Grade B refurbishment.
+        <p className="text-sm text-slate-600 bg-slate-50 rounded-lg p-3 border border-slate-100 min-h-[3.5rem]">
+          {grading.remarks || "No remarks recorded."}
         </p>
       </div>
 
       <div className="flex justify-end gap-3 pt-2">
-        <button className="flex items-center gap-2 text-sm bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 px-4 py-2.5 rounded-lg transition-colors">
+        <button
+          onClick={handleExportPdf}
+          className="flex items-center gap-2 text-sm bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 px-4 py-2.5 rounded-lg transition-colors"
+        >
           <Download size={14} />
           Export PDF
         </button>
-        <button className="flex items-center gap-2 text-sm bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2.5 rounded-lg transition-colors">
+        <button
+          onClick={onSaveDraft}
+          className="flex items-center gap-2 text-sm bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2.5 rounded-lg transition-colors"
+        >
           <Save size={14} />
           Save Draft
         </button>

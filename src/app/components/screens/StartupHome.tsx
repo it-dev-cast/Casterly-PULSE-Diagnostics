@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import {
   Usb,
   User,
@@ -24,6 +26,33 @@ interface StartupHomeProps {
   onSyncNow: () => void;
 }
 
+interface DashboardData {
+  usb: {
+    usbId: string;
+    version: string;
+    lastSync: string;
+    pendingUpload: number;
+    storedLocally: number;
+  };
+  operator: {
+    inspector: string;
+    employeeId: string;
+    loginStatus: string;
+    lastLogin: string;
+  };
+  lot: {
+    lotId: string;
+    created: string;
+    inspector: string;
+    customer: string;
+  } | null;
+  totalToday: number;
+  passed: number;
+  failed: number;
+  passRate: number;
+  failRate: number;
+}
+
 export function StartupHome({
   onContinueLOT,
   onCreateLOT,
@@ -32,12 +61,30 @@ export function StartupHome({
   onSettings,
   onSyncNow,
 }: StartupHomeProps) {
+  const [d, setD] = useState<DashboardData | null>(null);
+
+  useEffect(() => {
+    invoke<DashboardData>("get_dashboard")
+      .then(setD)
+      .catch((err) => console.error("Failed to load dashboard:", err));
+  }, []);
+
+  const dash = (v?: string) => (v && v.length ? v : "—");
+  const now = new Date();
+  const welcome = now.toLocaleDateString(undefined, {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+  const lotName = d?.lot?.lotId || "—";
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-slate-800">UDIAG 4.0 Home</h1>
+        <h1 className="text-slate-800">PULSE 4.0 Home</h1>
         <p className="text-sm text-slate-500 mt-0.5">
-          Welcome back · Monday, 15 June 2026 · 09:14 AM
+          Welcome back · {welcome}
         </p>
       </div>
 
@@ -54,23 +101,27 @@ export function StartupHome({
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-slate-500">USB ID</span>
-              <span className="text-slate-700 font-mono">USB-4A2F-9B3C</span>
+              <span className="text-slate-700 font-mono">{dash(d?.usb.usbId)}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-slate-500">Version</span>
-              <span className="text-slate-700">4.0.12</span>
+              <span className="text-slate-700">{dash(d?.usb.version)}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-slate-500">Last Sync</span>
-              <span className="text-slate-700">Today, 08:45 AM</span>
+              <span className="text-slate-700">{dash(d?.usb.lastSync)}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-slate-500">Pending Upload</span>
-              <span className="text-orange-600 font-medium">3</span>
+              <span className="text-orange-600 font-medium">
+                {d?.usb.pendingUpload ?? 0}
+              </span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-slate-500">Stored Locally</span>
-              <span className="text-slate-700 font-medium">127</span>
+              <span className="text-slate-700 font-medium">
+                {d?.usb.storedLocally ?? 0}
+              </span>
             </div>
           </div>
         </div>
@@ -86,22 +137,30 @@ export function StartupHome({
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-slate-500">Inspector</span>
-              <span className="text-slate-700 font-medium">Ravikiran K.</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-slate-500">Employee ID</span>
-              <span className="text-slate-700 font-mono">EMP-2847</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-slate-500">Login Status</span>
-              <span className="flex items-center gap-1.5 text-emerald-600">
-                <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                Active
+              <span className="text-slate-700 font-medium">
+                {dash(d?.operator.inspector)}
               </span>
             </div>
             <div className="flex justify-between text-sm">
+              <span className="text-slate-500">Employee ID</span>
+              <span className="text-slate-700 font-mono">
+                {dash(d?.operator.employeeId)}
+              </span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-slate-500">Login Status</span>
+              {d?.operator.loginStatus === "Active" ? (
+                <span className="flex items-center gap-1.5 text-emerald-600">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                  Active
+                </span>
+              ) : (
+                <span className="text-slate-400">Inactive</span>
+              )}
+            </div>
+            <div className="flex justify-between text-sm">
               <span className="text-slate-500">Last Login</span>
-              <span className="text-slate-700">Today, 09:00 AM</span>
+              <span className="text-slate-700">{dash(d?.operator.lastLogin)}</span>
             </div>
           </div>
         </div>
@@ -117,28 +176,30 @@ export function StartupHome({
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-slate-500">LOT ID</span>
-              <span className="text-slate-700 font-medium font-mono">CLY-003</span>
+              <span className="text-slate-700 font-medium font-mono">
+                {dash(d?.lot?.lotId)}
+              </span>
             </div>
             <div className="flex justify-between text-sm items-center">
               <span className="flex items-center gap-1 text-slate-500">
                 <Calendar size={12} />
                 Created
               </span>
-              <span className="text-slate-700">2026-06-07</span>
+              <span className="text-slate-700">{dash(d?.lot?.created)}</span>
             </div>
             <div className="flex justify-between text-sm items-center">
               <span className="flex items-center gap-1 text-slate-500">
                 <User size={12} />
                 Inspector
               </span>
-              <span className="text-slate-700">Ravikiran K.</span>
+              <span className="text-slate-700">{dash(d?.lot?.inspector)}</span>
             </div>
             <div className="flex justify-between text-sm items-center">
               <span className="flex items-center gap-1 text-slate-500">
                 <Building2 size={12} />
                 Customer
               </span>
-              <span className="text-slate-700">Dell Technologies</span>
+              <span className="text-slate-700">{dash(d?.lot?.customer)}</span>
             </div>
           </div>
         </div>
@@ -151,9 +212,11 @@ export function StartupHome({
             <BarChart3 size={20} className="text-blue-600" />
           </div>
           <div>
-            <div className="text-2xl text-slate-800 leading-none">41</div>
+            <div className="text-2xl text-slate-800 leading-none">
+              {d?.totalToday ?? 0}
+            </div>
             <div className="text-sm text-slate-500 mt-1">Total Inspections Today</div>
-            <div className="text-xs text-slate-400 mt-0.5">↑ 8 vs yesterday</div>
+            <div className="text-xs text-slate-400 mt-0.5">Stored locally: {d?.usb.storedLocally ?? 0}</div>
           </div>
         </div>
         <div className="bg-white rounded-lg border border-slate-200 p-4 flex items-start gap-4">
@@ -161,9 +224,13 @@ export function StartupHome({
             <CheckCircle2 size={20} className="text-emerald-600" />
           </div>
           <div>
-            <div className="text-2xl text-slate-800 leading-none">35</div>
+            <div className="text-2xl text-slate-800 leading-none">
+              {d?.passed ?? 0}
+            </div>
             <div className="text-sm text-slate-500 mt-1">Devices Passed</div>
-            <div className="text-xs text-slate-400 mt-0.5">85.4% pass rate</div>
+            <div className="text-xs text-slate-400 mt-0.5">
+              {d?.passRate ?? 0}% pass rate
+            </div>
           </div>
         </div>
         <div className="bg-white rounded-lg border border-slate-200 p-4 flex items-start gap-4">
@@ -171,9 +238,13 @@ export function StartupHome({
             <XCircle size={20} className="text-red-500" />
           </div>
           <div>
-            <div className="text-2xl text-slate-800 leading-none">6</div>
+            <div className="text-2xl text-slate-800 leading-none">
+              {d?.failed ?? 0}
+            </div>
             <div className="text-sm text-slate-500 mt-1">Devices Failed</div>
-            <div className="text-xs text-slate-400 mt-0.5">14.6% fail rate</div>
+            <div className="text-xs text-slate-400 mt-0.5">
+              {d?.failRate ?? 0}% fail rate
+            </div>
           </div>
         </div>
       </div>
@@ -192,7 +263,7 @@ export function StartupHome({
             </div>
             <div className="text-center">
               <div className="text-sm font-medium">Continue Active LOT</div>
-              <div className="text-xs text-blue-200 mt-0.5">LOT: CLY-003</div>
+              <div className="text-xs text-blue-200 mt-0.5">LOT: {lotName}</div>
             </div>
           </button>
 
@@ -232,7 +303,9 @@ export function StartupHome({
             </div>
             <div className="flex-1 text-left">
               <div className="text-sm font-medium">Upload Queue</div>
-              <div className="text-xs text-slate-500">3 pending uploads</div>
+              <div className="text-xs text-slate-500">
+                {d?.usb.pendingUpload ?? 0} pending uploads
+              </div>
             </div>
           </button>
 
@@ -245,7 +318,7 @@ export function StartupHome({
             </div>
             <div className="flex-1 text-left">
               <div className="text-sm font-medium">Settings</div>
-              <div className="text-xs text-slate-500">Configure UDIAG</div>
+              <div className="text-xs text-slate-500">Configure PULSE</div>
             </div>
           </button>
 
@@ -258,7 +331,9 @@ export function StartupHome({
             </div>
             <div className="flex-1 text-left">
               <div className="text-sm font-medium">Synchronize Now</div>
-              <div className="text-xs text-slate-500">Last sync: 08:45 AM</div>
+              <div className="text-xs text-slate-500">
+                Last sync: {dash(d?.usb.lastSync)}
+              </div>
             </div>
           </button>
         </div>
@@ -271,7 +346,7 @@ export function StartupHome({
           <div>
             <div className="text-sm text-blue-900 font-medium">System Ready</div>
             <div className="text-xs text-blue-700 mt-0.5">
-              All systems operational. Ready to collect inspections for LOT CLY-003.
+              All systems operational. Ready to collect inspections for LOT {lotName}.
             </div>
           </div>
         </div>

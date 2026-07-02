@@ -27,14 +27,9 @@ pub struct CpuInfo {
 
     pub cache_l3: String,
 
-    // Sum of L1d + L1i + L2 + L3 caches in MiB (mirrors the Python script).
-    pub cache_total_mb: f64,
-
     pub virtualization: bool,
 
     pub hyper_threading: bool,
-
-    pub flags: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -126,11 +121,9 @@ pub struct SystemInfo {
 
     pub uuid: String,
 
-    pub version: String,
+    pub board_serial: String,
 
-    pub sku_number: String,
-
-    pub family: String,
+    pub bios_version: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -236,6 +229,10 @@ pub struct GpuInfo {
     pub bus_address: String,
 
     pub driver: String,
+
+    pub vram: String,
+
+    pub output_resolution: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -245,34 +242,6 @@ pub struct DisplayInfo {
     pub panel_part_number: String,
     pub resolution: String,
     pub size_inches: f64,
-    pub refresh_rate: String,
-    pub aspect_ratio: String,
-    pub size: String,
-    pub touchscreen: String,
-    pub manufacture_year: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct AudioInfo {
-    pub manufacturer: String,
-    pub model: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct MotherboardInfo {
-    pub manufacturer: String,
-    pub model: String,
-    pub revision: String,
-    pub serial_number: String,
-    pub bios_version: String,
-    pub bios_date: String,
-    pub bios_vendor: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct BluetoothInfo {
-    pub manufacturer: String,
-    pub model: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -303,6 +272,14 @@ pub struct CameraInfo {
     pub device: String,
 
     pub status: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AudioInfo {
+    pub codec: String,
+    pub speaker_type: String,
+    pub mic_type: String,
+    pub jack_type: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

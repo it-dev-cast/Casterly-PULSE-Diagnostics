@@ -1,23 +1,15 @@
 use anyhow::Result;
-use std::process::Command;
 
 use crate::models::device::MemoryModule;
 
 pub fn collect() -> Result<Vec<MemoryModule>>
 {
-    // WSL has no SMBIOS, so dmidecode returns nothing — use the Windows host.
-    if crate::inventory::wslhost::is_wsl() {
-        return Ok(crate::inventory::wslhost::memory());
-    }
-
     let output =
-        Command::new("sudo")
-            .args([
-                "dmidecode",
-                "-t",
-                "memory"
-            ])
-            .output()?;
+        crate::sudo::output(&[
+            "dmidecode",
+            "-t",
+            "memory",
+        ])?;
 
     let text =
         String::from_utf8_lossy(

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { CheckCircle2, XCircle, RefreshCw, ChevronRight } from "lucide-react";
+import { useInspection } from "../../context/InspectionContext";
 
 const KEY_LAYOUT: (string | null)[][] = [
   ["Esc", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12", "PrtSc", "Ins", "Del"],
@@ -17,13 +18,41 @@ interface KeyboardTestProps {
 }
 
 export function KeyboardTest({ onNext }: KeyboardTestProps) {
-  const [pressed, setPressed] = useState<Set<string>>(new Set());
-  const [failed, setFailed] = useState<Set<string>>(new Set());
-  const [result, setResult] = useState<"pass" | "fail" | null>(null);
+  const { data, setData } = useInspection();
+  const persisted = data.keyboardTest;
+  const [pressed, setPressed] = useState<Set<string>>(new Set(persisted.pressed));
+  const [failed, setFailed] = useState<Set<string>>(new Set(persisted.failed));
+  const [result, setResult] = useState<"pass" | "fail" | null>(persisted.result);
+
+  // Persist pressed/failed/result into context whenever they change.
+  useEffect(() => {
+    const pressedArr = Array.from(pressed);
+    const failedArr = Array.from(failed);
+    if (
+      JSON.stringify(persisted.pressed) !== JSON.stringify(pressedArr) ||
+      JSON.stringify(persisted.failed) !== JSON.stringify(failedArr) ||
+      persisted.result !== result
+    ) {
+      setData((prev) => ({
+        ...prev,
+        keyboardTest: { pressed: pressedArr, failed: failedArr, result },
+      }));
+    }
+  }, [pressed, failed, result, setData, persisted.pressed, persisted.failed, persisted.result]);
+
+  // Any explicitly-failed key means the overall keyboard test fails.
+  useEffect(() => {
+    if (failed.size > 0 && result !== "fail") {
+      setResult("fail");
+    }
+  }, [failed, result]);
 
   const allKeys = KEY_LAYOUT.flat().filter(Boolean) as string[];
-  const testedCount = pressed.size + failed.size;
-  const totalKeys = allKeys.length;
+  // The physical layout has duplicate labels for left/right modifiers; treat
+  // each label only once for progress and missing-key reporting.
+  const uniqueKeys = Array.from(new Set(allKeys));
+  const testedCount = uniqueKeys.filter((k) => pressed.has(k) || failed.has(k)).length;
+  const totalKeys = uniqueKeys.length;
   const pct = Math.round((testedCount / totalKeys) * 100);
 
   useEffect(() => {
@@ -39,7 +68,6 @@ export function KeyboardTest({ onNext }: KeyboardTestProps) {
         PageUp: "PgUp", PageDown: "PgDn",
       };
 
-      // Handle Shift key - distinguish left and right
       let label = mapped[e.key] ?? key;
       if (e.key === "Shift") {
         label = e.location === KeyboardEvent.DOM_KEY_LOCATION_RIGHT ? "Shift↑" : "Shift";
@@ -65,7 +93,7 @@ export function KeyboardTest({ onNext }: KeyboardTestProps) {
     setResult(null);
   };
 
-  const missingKeys = allKeys.filter((k) => !pressed.has(k) && !failed.has(k));
+  const missingKeys = uniqueKeys.filter((k) => !pressed.has(k) && !failed.has(k));
 
   return (
     <div className="space-y-5">
@@ -136,8 +164,7 @@ export function KeyboardTest({ onNext }: KeyboardTestProps) {
                 const isWide = WIDE_KEYS.has(key);
                 const isSpace = key === "Space";
 
-                // Calculate width for proper alignment with fixed widths
-                let widthClass = "w-12"; // Default key width
+                let widthClass = "w-12";
                 if (isSpace) widthClass = "w-[352px]";
                 else if (key === "Backspace") widthClass = "w-[88px]";
                 else if (key === "Tab") widthClass = "w-[72px]";

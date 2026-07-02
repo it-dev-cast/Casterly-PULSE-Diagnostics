@@ -1,7 +1,7 @@
-import { useState } from "react";
 import { CheckCircle2, XCircle, ChevronRight } from "lucide-react";
+import { useInspection, type GradeResult } from "../../context/InspectionContext";
 
-type GradeResult = "pass" | "fail" | null;
+type GradeResultLocal = GradeResult;
 
 interface DefectType {
   id: string;
@@ -32,7 +32,7 @@ const keyboardDefects: DefectType[] = [
 
 interface GradingItemProps {
   label: string;
-  result: GradeResult;
+  result: GradeResultLocal;
   onPass: () => void;
   onFail: () => void;
   defects?: DefectType[];
@@ -107,36 +107,44 @@ interface ManualGradingProps {
 }
 
 export function ManualGrading({ onNext }: ManualGradingProps) {
-  const [grades, setGrades] = useState<Record<string, GradeResult>>({
-    lcd: null,
-    topCover: null,
-    bezel: null,
-    palmrest: null,
-    bottomCover: null,
-    keyboard: null,
-    touchpad: null,
-  });
-  const [selectedDefects, setSelectedDefects] = useState<Record<string, string[]>>({
-    lcd: [],
-    topCover: [],
-    bezel: [],
-    palmrest: [],
-    bottomCover: [],
-    keyboard: [],
-    touchpad: [],
-  });
-  const [remarks, setRemarks] = useState("");
+  const { data, setData } = useInspection();
+  const { grades, selectedDefects, remarks } = data.grading;
 
-  const setGrade = (key: string, value: GradeResult) =>
-    setGrades((g) => ({ ...g, [key]: value }));
-
-  const toggleDefect = (componentKey: string, defectId: string) =>
-    setSelectedDefects((prev) => ({
+  const setGrade = (key: string, value: GradeResultLocal) => {
+    setData((prev) => ({
       ...prev,
-      [componentKey]: prev[componentKey].includes(defectId)
-        ? prev[componentKey].filter((x) => x !== defectId)
-        : [...prev[componentKey], defectId],
+      grading: {
+        ...prev.grading,
+        grades: { ...prev.grading.grades, [key]: value },
+      },
     }));
+  };
+
+  const toggleDefect = (componentKey: string, defectId: string) => {
+    setData((prev) => {
+      const current = prev.grading.selectedDefects[componentKey] || [];
+      const next = current.includes(defectId)
+        ? current.filter((x) => x !== defectId)
+        : [...current, defectId];
+      return {
+        ...prev,
+        grading: {
+          ...prev.grading,
+          selectedDefects: { ...prev.grading.selectedDefects, [componentKey]: next },
+        },
+      };
+    });
+  };
+
+  const updateRemarks = (nextRemarks: string) => {
+    setData((prev) => ({
+      ...prev,
+      grading: { ...prev.grading, remarks: nextRemarks },
+    }));
+  };
+
+  // Cleanup effect was used during debugging; all changes are now committed
+  // immediately via functional setData updates above.
 
   const completedCount = Object.values(grades).filter(Boolean).length;
   const totalCount = Object.keys(grades).length;
@@ -176,7 +184,7 @@ export function ManualGrading({ onNext }: ManualGradingProps) {
           <GradingItem
             key={item.key}
             label={item.label}
-            result={grades[item.key]}
+            result={grades[item.key] ?? null}
             onPass={() => setGrade(item.key, "pass")}
             onFail={() => setGrade(item.key, "fail")}
             defects={item.defects}
@@ -191,7 +199,7 @@ export function ManualGrading({ onNext }: ManualGradingProps) {
         <label className="text-sm text-slate-700 block mb-2">Technician Remarks</label>
         <textarea
           value={remarks}
-          onChange={(e) => setRemarks(e.target.value)}
+          onChange={(e) => updateRemarks(e.target.value)}
           placeholder="Enter any additional observations, cosmetic notes, or defects found during inspection..."
           rows={4}
           className="w-full text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded-lg p-3 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder:text-slate-400"

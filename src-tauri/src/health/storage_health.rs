@@ -59,13 +59,11 @@ fn collect_nvme_health(
 -> Result<StorageHealth>
 {
     let output =
-        Command::new("sudo")
-            .args([
-                "nvme",
-                "smart-log",
-                device
-            ])
-            .output()?;
+        crate::sudo::output(&[
+            "nvme",
+            "smart-log",
+            device,
+        ])?;
 
     let text =
         String::from_utf8_lossy(

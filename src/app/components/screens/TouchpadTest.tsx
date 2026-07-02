@@ -1,5 +1,6 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { CheckCircle2, XCircle, RefreshCw, ChevronRight, MousePointer2 } from "lucide-react";
+import { useInspection } from "../../context/InspectionContext";
 
 interface TouchpadTestProps {
   onNext: () => void;
@@ -10,15 +11,42 @@ interface Point {
   y: number;
 }
 
+interface TouchpadTestData {
+  leftClick: boolean;
+  rightClick: boolean;
+  movement: boolean;
+  scroll: boolean;
+  result: "pass" | "fail" | null;
+}
+
 export function TouchpadTest({ onNext }: TouchpadTestProps) {
-  const [leftClick, setLeftClick] = useState(false);
-  const [rightClick, setRightClick] = useState(false);
-  const [movement, setMovement] = useState(false);
-  const [scroll, setScroll] = useState(false);
+  const { data, setData } = useInspection();
+  const persisted: TouchpadTestData = data.touchpadTest;
+
+  const [leftClick, setLeftClick] = useState(persisted.leftClick);
+  const [rightClick, setRightClick] = useState(persisted.rightClick);
+  const [movement, setMovement] = useState(persisted.movement);
+  const [scroll, setScroll] = useState(persisted.scroll);
   const [cursorPos, setCursorPos] = useState<Point>({ x: 50, y: 50 });
   const [trail, setTrail] = useState<Point[]>([]);
-  const [result, setResult] = useState<"pass" | "fail" | null>(null);
+  const [result, setResult] = useState<"pass" | "fail" | null>(persisted.result);
   const padRef = useRef<HTMLDivElement>(null);
+
+  // Persist detections and result into context whenever they change.
+  useEffect(() => {
+    if (
+      persisted.leftClick !== leftClick ||
+      persisted.rightClick !== rightClick ||
+      persisted.movement !== movement ||
+      persisted.scroll !== scroll ||
+      persisted.result !== result
+    ) {
+      setData((prev) => ({
+        ...prev,
+        touchpadTest: { leftClick, rightClick, movement, scroll, result },
+      }));
+    }
+  }, [leftClick, rightClick, movement, scroll, result, setData, persisted]);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = padRef.current?.getBoundingClientRect();
@@ -92,12 +120,12 @@ export function TouchpadTest({ onNext }: TouchpadTestProps) {
 
               {/* Left and Right click zones */}
               <div className="absolute inset-0 flex">
-                {/* Left click zone */}
+                {/* Left click zone — only left mouse button (button === 0) counts */}
                 <div
                   className="flex-1 relative cursor-pointer"
-                  onClick={(e) => {
+                  onMouseDown={(e) => {
                     e.stopPropagation();
-                    setLeftClick(true);
+                    if (e.button === 0) setLeftClick(true);
                   }}
                 >
                   {!movement && (
@@ -113,17 +141,16 @@ export function TouchpadTest({ onNext }: TouchpadTestProps) {
                 {/* Center divider */}
                 <div className="w-px bg-white/10"></div>
 
-                {/* Right click zone */}
+                {/* Right click zone — only right mouse button (button === 2) counts */}
                 <div
                   className="flex-1 relative cursor-pointer"
                   onContextMenu={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    setRightClick(true);
                   }}
-                  onClick={(e) => {
+                  onMouseDown={(e) => {
                     e.stopPropagation();
-                    setRightClick(true);
+                    if (e.button === 2) setRightClick(true);
                   }}
                 >
                   {!movement && (

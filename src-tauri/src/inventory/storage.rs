@@ -5,11 +5,6 @@ use std::process::Command;
 use crate::models::device::StorageDevice;
 
 pub fn collect() -> Result<Vec<StorageDevice>> {
-    // WSL exposes only its virtual disk — use the Windows host's real drives.
-    if crate::inventory::wslhost::is_wsl() {
-        return Ok(crate::inventory::wslhost::storage());
-    }
-
     let output = Command::new("lsblk")
         .args([
             "-d",
@@ -40,23 +35,10 @@ pub fn collect() -> Result<Vec<StorageDevice>> {
             .cloned()
             .unwrap_or_default();
 
-        // lsblk frequently reports "FFFF…"/blank serials for NVMe, so read the
-        // real serial straight from sysfs / udev first (the same sources
-        // Storage.py uses) and only fall back to lsblk's value.
-        let lsblk_serial = fields
+        let serial = fields
             .get("SERIAL")
             .cloned()
             .unwrap_or_default();
-
-        let mut serial = read_real_serial(&name);
-
-        if is_placeholder_serial(&serial) {
-            if !is_placeholder_serial(&lsblk_serial) {
-                serial = lsblk_serial;
-            } else {
-                serial = String::new();
-            }
-        }
 
         let transport = fields
             .get("TRAN")
@@ -147,49 +129,6 @@ pub fn collect() -> Result<Vec<StorageDevice>> {
     Ok(drives)
 }
 
-/// True when a serial is empty or a placeholder (all F / all 0).
-fn is_placeholder_serial(serial: &str) -> bool {
-    let cleaned = serial.replace(
-        |c: char| matches!(c, 'F' | 'f' | '0' | ' ' | '.' | '-' | '_'),
-        "",
-    );
-    cleaned.is_empty()
-}
-
-/// Reads the real device serial: sysfs first (NVMe + many SATA), then
-/// `udevadm ... ID_SERIAL_SHORT` (SATA/USB) — the sources Storage.py uses.
-fn read_real_serial(name: &str) -> String {
-    let path = format!("/sys/block/{}/device/serial", name);
-    let sysfs = std::fs::read_to_string(path)
-        .unwrap_or_default()
-        .trim()
-        .to_string();
-
-    if !is_placeholder_serial(&sysfs) {
-        return sysfs;
-    }
-
-    // udevadm info --query=property --name=/dev/<name> | grep ID_SERIAL_SHORT
-    let output = Command::new("udevadm")
-        .args([
-            "info",
-            "--query=property",
-            &format!("--name=/dev/{}", name),
-        ])
-        .output();
-
-    if let Ok(o) = output {
-        let text = String::from_utf8_lossy(&o.stdout);
-        for line in text.lines() {
-            if let Some(v) = line.strip_prefix("ID_SERIAL_SHORT=") {
-                return v.trim().to_string();
-            }
-        }
-    }
-
-    String::new()
-}
-
 fn parse_lsblk_line(
     line: &str,
 ) -> HashMap<String, String> {
@@ -270,13 +209,11 @@ fn get_smart_data(
     Option<u64>,
     Option<u64>,
 ) {
-    let output = Command::new("sudo")
-        .args([
-            "smartctl",
-            "-a",
-            device,
-        ])
-        .output();
+    let output = crate::sudo::output(&[
+        "smartctl",
+        "-a",
+        device,
+    ]);
 
     let output = match output {
         Ok(o) => o,

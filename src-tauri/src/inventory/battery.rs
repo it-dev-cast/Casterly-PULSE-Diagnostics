@@ -7,11 +7,6 @@ use crate::models::device::BatteryInfo;
 pub fn collect()
 -> Result<Option<BatteryInfo>>
 {
-    // WSL doesn't pass through the battery — use the Windows host.
-    if crate::inventory::wslhost::is_wsl() {
-        return Ok(crate::inventory::wslhost::battery());
-    }
-
     let power_supply =
         "/sys/class/power_supply";
 
@@ -233,17 +228,22 @@ fn convert_to_wh(
 )
 -> f64
 {
-    // Linux sysfs energy_* values are in µWh (microwatt-hours), e.g. a 52 Wh
-    // battery reports ~52,000,000. mWh sources (e.g. Windows WMI) report ~52,000.
-    if value >= 1_000_000 {
-        // µWh → Wh
-        value as f64 / 1_000_000.0
-    } else if value >= 1_000 {
-        // mWh → Wh
-        value as f64 / 1_000.0
-    } else {
-        // already Wh
+    //
+    // Dell / HP / Lenovo often
+    // report values in µWh
+    //
+    if value > 500000
+    {
         value as f64
+            / 100000.0
+    }
+    else
+    {
+        //
+        // Already mWh
+        //
+        value as f64
+            / 1000.0
     }
 }
 

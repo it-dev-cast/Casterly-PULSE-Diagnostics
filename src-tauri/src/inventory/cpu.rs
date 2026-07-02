@@ -4,37 +4,6 @@ use std::process::Command;
 
 use crate::models::device::CpuInfo;
 
-/// Converts an lscpu cache string (e.g. "192 KiB", "1.3 MiB (5 instances)")
-/// into MiB. Mirrors the `cache_to_mb` helper in Processor.py: it reads the
-/// leading number and the unit token, ignoring any trailing text.
-fn cache_to_mb(value: &str) -> f64 {
-
-    let parts: Vec<&str> =
-        value.split_whitespace().collect();
-
-    if parts.is_empty() {
-        return 0.0;
-    }
-
-    let num: f64 =
-        match parts[0].parse() {
-            Ok(n) => n,
-            Err(_) => return 0.0,
-        };
-
-    let unit = parts.get(1).copied().unwrap_or("");
-
-    if unit.contains("KiB") {
-        num / 1024.0
-    } else if unit.contains("MiB") {
-        num
-    } else if unit.contains("GiB") {
-        num * 1024.0
-    } else {
-        0.0
-    }
-}
-
 pub fn collect() -> Result<CpuInfo> {
 
     let output =
@@ -124,33 +93,12 @@ pub fn collect() -> Result<CpuInfo> {
             .unwrap_or(&String::new())
             .to_string();
 
-    // L1 instruction cache — needed for the total but not stored separately.
-    let cache_l1i =
-        data.get("L1i cache")
-            .unwrap_or(&String::new())
-            .to_string();
-
-    // Total cache in MiB = L1d + L1i + L2 + L3 (mirrors Processor.py).
-    let cache_total_mb = {
-        let total =
-            cache_to_mb(&cache_l1)
-            + cache_to_mb(&cache_l1i)
-            + cache_to_mb(&cache_l2)
-            + cache_to_mb(&cache_l3);
-
-        // Round to 2 decimals like the Python round(..., 2).
-        (total * 100.0).round() / 100.0
-    };
-
     let virtualization =
         data.contains_key("Virtualization");
 
     let hyper_threading =
         threads >
         (sockets * cores_per_socket);
-
-    let flags =
-        get_cpu_flags()?;
 
     Ok(
 
@@ -180,13 +128,9 @@ pub fn collect() -> Result<CpuInfo> {
 
             cache_l3,
 
-            cache_total_mb,
-
             virtualization,
 
             hyper_threading,
-
-            flags,
         }
     )
 }
@@ -215,38 +159,4 @@ fn get_current_frequency() -> f64 {
     }
 
     0.0
-}
-
-fn get_cpu_flags()
--> Result<Vec<String>>
-{
-    let output =
-        Command::new("cat")
-            .arg("/proc/cpuinfo")
-            .output()?;
-
-    let text =
-        String::from_utf8_lossy(
-            &output.stdout
-        );
-
-    for line in text.lines() {
-
-        if line.starts_with("flags")
-        {
-            if let Some(flags) =
-                line.split(':').nth(1)
-            {
-                return Ok(
-
-                    flags
-                        .split_whitespace()
-                        .map(|x| x.to_string())
-                        .collect()
-                );
-            }
-        }
-    }
-
-    Ok(vec![])
 }

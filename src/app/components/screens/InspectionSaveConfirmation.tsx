@@ -1,4 +1,7 @@
 import { CheckCircle2, Circle, Monitor, HardDrive, ClipboardCheck, Volume2, Camera, Keyboard, MousePointer2, Battery, AlertCircle, Save, FileText } from "lucide-react";
+import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { useInspection } from "../../context/InspectionContext";
 
 interface ChecklistItem {
   id: string;
@@ -6,17 +9,6 @@ interface ChecklistItem {
   icon: React.ElementType;
   status: "completed" | "pending" | "skipped";
 }
-
-const checklistItems: ChecklistItem[] = [
-  { id: "system-scan", label: "System Scan", icon: Monitor, status: "completed" },
-  { id: "hardware-inventory", label: "Hardware Inventory", icon: HardDrive, status: "completed" },
-  { id: "manual-grading", label: "Manual Grading", icon: ClipboardCheck, status: "completed" },
-  { id: "speaker-test", label: "Speaker Test", icon: Volume2, status: "completed" },
-  { id: "webcam-test", label: "Webcam Test", icon: Camera, status: "completed" },
-  { id: "keyboard-test", label: "Keyboard Test", icon: Keyboard, status: "completed" },
-  { id: "touchpad-test", label: "Touchpad Test", icon: MousePointer2, status: "completed" },
-  { id: "battery-assessment", label: "Battery Assessment", icon: Battery, status: "completed" },
-];
 
 interface InspectionSaveConfirmationProps {
   onSave: () => void;
@@ -29,6 +21,74 @@ export function InspectionSaveConfirmation({
   onSaveDraft,
   onCancel,
 }: InspectionSaveConfirmationProps) {
+  const { data } = useInspection();
+  const [session, setSession] = useState<{
+    lotName: string;
+    inspectorName: string;
+  }>({ lotName: "", inspectorName: "" });
+
+  useEffect(() => {
+    invoke<{ lotName: string; inspectorName: string }>("get_session")
+      .then(setSession)
+      .catch((err) => console.error("Failed to load session:", err));
+  }, []);
+
+  // Checklist reflects the actual state of each workflow step, driven by the
+  // live InspectionContext data (replaces the previous hardcoded "completed"
+  // list, which meant the Save button was never really gated on anything).
+  const checklistItems: ChecklistItem[] = [
+    {
+      id: "system-scan",
+      label: "System Scan",
+      icon: Monitor,
+      status: data.scanCompleted ? "completed" : "pending",
+    },
+    {
+      id: "hardware-inventory",
+      label: "Hardware Inventory",
+      icon: HardDrive,
+      status: data.scanCompleted ? "completed" : "pending",
+    },
+    {
+      id: "manual-grading",
+      label: "Manual Grading",
+      icon: ClipboardCheck,
+      status: Object.values(data.grading.grades).some((g) => g !== null)
+        ? "completed"
+        : "pending",
+    },
+    {
+      id: "speaker-test",
+      label: "Speaker Test",
+      icon: Volume2,
+      status: data.speakerTest.result ? "completed" : "pending",
+    },
+    {
+      id: "webcam-test",
+      label: "Webcam Test",
+      icon: Camera,
+      status: data.webcamTest.result ? "completed" : "pending",
+    },
+    {
+      id: "keyboard-test",
+      label: "Keyboard Test",
+      icon: Keyboard,
+      status: data.keyboardTest.result ? "completed" : "pending",
+    },
+    {
+      id: "touchpad-test",
+      label: "Touchpad Test",
+      icon: MousePointer2,
+      status: data.touchpadTest.result ? "completed" : "pending",
+    },
+    {
+      id: "battery-assessment",
+      label: "Battery Assessment",
+      icon: Battery,
+      status: data.batteryAssessment.result ? "completed" : "pending",
+    },
+  ];
+
   const completedCount = checklistItems.filter((item) => item.status === "completed").length;
   const totalCount = checklistItems.length;
   const isComplete = completedCount === totalCount;
@@ -155,19 +215,27 @@ export function InspectionSaveConfirmation({
         <div className="grid grid-cols-4 gap-4">
           <div>
             <div className="text-xs text-slate-500">Serial Number</div>
-            <div className="text-sm text-slate-700 font-mono mt-0.5">5CD124NJWZ</div>
+            <div className="text-sm text-slate-700 font-mono mt-0.5">
+              {data.systemInfo?.serial_number || "—"}
+            </div>
           </div>
           <div>
             <div className="text-xs text-slate-500">Model</div>
-            <div className="text-sm text-slate-700 mt-0.5">HP ProBook 440 G8</div>
+            <div className="text-sm text-slate-700 mt-0.5">
+              {data.systemInfo?.model || "—"}
+            </div>
           </div>
           <div>
             <div className="text-xs text-slate-500">LOT</div>
-            <div className="text-sm text-slate-700 mt-0.5">CLY-003</div>
+            <div className="text-sm text-slate-700 mt-0.5">
+              {session.lotName || "—"}
+            </div>
           </div>
           <div>
             <div className="text-xs text-slate-500">Inspector</div>
-            <div className="text-sm text-slate-700 mt-0.5">Ravikiran K.</div>
+            <div className="text-sm text-slate-700 mt-0.5">
+              {session.inspectorName || "—"}
+            </div>
           </div>
         </div>
       </div>

@@ -1,64 +1,65 @@
+import { useEffect, useState, useCallback } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { Cloud, CheckCircle2, XCircle, Clock, RefreshCw, AlertCircle, Activity } from "lucide-react";
 
-interface SyncActivity {
-  id: string;
-  timestamp: string;
-  record: string;
-  result: "success" | "failed";
+interface QueueItem {
+  id: number;
+  inspectionUuid: string;
+  status: string;
+  createdAt: string;
+  uploadedAt: string | null;
+  serial: string;
 }
 
-const syncHistory: SyncActivity[] = [
-  {
-    id: "1",
-    timestamp: "2026-06-08 10:25:14",
-    record: "5CD127XYZA",
-    result: "success",
-  },
-  {
-    id: "2",
-    timestamp: "2026-06-08 10:20:42",
-    record: "5CD128BCDE",
-    result: "success",
-  },
-  {
-    id: "3",
-    timestamp: "2026-06-08 10:15:18",
-    record: "5CD125PQRS",
-    result: "failed",
-  },
-  {
-    id: "4",
-    timestamp: "2026-06-08 10:10:05",
-    record: "5CD126TUVW",
-    result: "success",
-  },
-  {
-    id: "5",
-    timestamp: "2026-06-08 10:05:33",
-    record: "5CD123MNOP",
-    result: "success",
-  },
-  {
-    id: "6",
-    timestamp: "2026-06-08 09:58:47",
-    record: "5CD122JKLM",
-    result: "failed",
-  },
-  {
-    id: "7",
-    timestamp: "2026-06-08 09:52:12",
-    record: "5CD121GHIJ",
-    result: "success",
-  },
-];
-
 export function SyncStatus() {
-  const lastSync = "Today, 10:25 AM";
-  const pendingCount = 3;
-  const failedCount = 2;
-  const successfulSyncs = syncHistory.filter((s) => s.result === "success").length;
-  const failedSyncs = syncHistory.filter((s) => s.result === "failed").length;
-  const syncHealth = successfulSyncs / (successfulSyncs + failedSyncs);
+  const [sync, setSync] = useState({
+    pending: 0,
+    uploaded: 0,
+    failed: 0,
+    total: 0,
+    lastSync: "Never",
+  });
+  const [items, setItems] = useState<QueueItem[]>([]);
+  const [syncing, setSyncing] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const s = await invoke<typeof sync>("get_sync_status");
+      setSync(s);
+      const q = await invoke<{ items: QueueItem[] }>("get_upload_queue");
+      setItems(q.items);
+    } catch (err) {
+      console.error("Failed to load sync data:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const handleSyncNow = async () => {
+    setSyncing(true);
+    try {
+      const r = await invoke<{ message: string }>("sync_now");
+      await load();
+      alert(`Sync: ${r.message}`);
+    } catch (err) {
+      console.error("Sync failed:", err);
+      alert(`Sync failed: ${err}`);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const lastSync = sync.lastSync || "Never";
+  const pendingCount = sync.pending;
+  const failedCount = sync.failed;
+  const successfulSyncs = sync.uploaded;
+  const failedSyncs = sync.failed;
+  const syncHealth =
+    successfulSyncs + failedSyncs > 0
+      ? successfulSyncs / (successfulSyncs + failedSyncs)
+      : 0;
 
   const getHealthStatus = (health: number) => {
     if (health >= 0.9) return { text: "Excellent", color: "text-emerald-600", bg: "bg-emerald-50" };
@@ -79,11 +80,19 @@ export function SyncStatus() {
           </p>
         </div>
         <div className="flex gap-2">
-          <button className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-sm px-3 py-2 rounded-lg transition-colors">
-            <RefreshCw size={16} />
-            Sync Now
+          <button
+            onClick={handleSyncNow}
+            disabled={syncing}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-sm px-3 py-2 rounded-lg transition-colors disabled:opacity-50"
+          >
+            <RefreshCw size={16} className={syncing ? "animate-spin" : ""} />
+            {syncing ? "Syncing…" : "Sync Now"}
           </button>
-          <button className="flex items-center gap-2 bg-slate-600 hover:bg-slate-500 text-white text-sm px-3 py-2 rounded-lg transition-colors">
+          <button
+            onClick={handleSyncNow}
+            disabled={syncing}
+            className="flex items-center gap-2 bg-slate-600 hover:bg-slate-500 text-white text-sm px-3 py-2 rounded-lg transition-colors disabled:opacity-50"
+          >
             <RefreshCw size={16} />
             Retry Failed Uploads
           </button>
@@ -98,7 +107,7 @@ export function SyncStatus() {
             <span className="text-xs text-slate-500">Last Successful Sync</span>
           </div>
           <div className="text-sm text-slate-800 leading-none font-medium">{lastSync}</div>
-          <div className="text-xs text-slate-400 mt-1">2 minutes ago</div>
+          <div className="text-xs text-slate-400 mt-1">{sync.uploaded} uploaded total</div>
         </div>
 
         <div className="bg-white rounded-lg border border-slate-200 p-4">
@@ -181,7 +190,7 @@ export function SyncStatus() {
         <div className="p-4 border-b border-slate-200">
           <h3 className="text-slate-700">Recent Upload Activity</h3>
           <p className="text-xs text-slate-500 mt-0.5">
-            Last {syncHistory.length} sync attempts
+            {items.length} queued record{items.length === 1 ? "" : "s"}
           </p>
         </div>
 
@@ -201,32 +210,49 @@ export function SyncStatus() {
               </tr>
             </thead>
             <tbody>
-              {syncHistory.map((activity) => (
-                <tr
-                  key={activity.id}
-                  className="border-b border-slate-50 hover:bg-slate-50 transition-colors"
-                >
-                  <td className="px-4 py-3 text-slate-500">{activity.timestamp}</td>
-                  <td className="px-4 py-3">
-                    <span className="font-mono text-slate-700">
-                      {activity.record}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    {activity.result === "success" ? (
-                      <span className="flex items-center gap-1 text-xs text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded w-fit">
-                        <CheckCircle2 size={12} />
-                        Success
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-1 text-xs text-red-700 bg-red-100 px-2 py-0.5 rounded w-fit">
-                        <XCircle size={12} />
-                        Failed
-                      </span>
-                    )}
+              {items.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="px-4 py-8 text-center text-sm text-slate-400">
+                    No sync activity yet.
                   </td>
                 </tr>
-              ))}
+              )}
+              {items.map((activity) => {
+                const status = activity.status.toUpperCase();
+                return (
+                  <tr
+                    key={activity.id}
+                    className="border-b border-slate-50 hover:bg-slate-50 transition-colors"
+                  >
+                    <td className="px-4 py-3 text-slate-500">
+                      {activity.uploadedAt || activity.createdAt}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="font-mono text-slate-700">
+                        {activity.serial || activity.inspectionUuid.slice(0, 8)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {status === "UPLOADED" ? (
+                        <span className="flex items-center gap-1 text-xs text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded w-fit">
+                          <CheckCircle2 size={12} />
+                          Success
+                        </span>
+                      ) : status === "FAILED" ? (
+                        <span className="flex items-center gap-1 text-xs text-red-700 bg-red-100 px-2 py-0.5 rounded w-fit">
+                          <XCircle size={12} />
+                          Failed
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1 text-xs text-orange-700 bg-orange-100 px-2 py-0.5 rounded w-fit">
+                          <Clock size={12} />
+                          Pending
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

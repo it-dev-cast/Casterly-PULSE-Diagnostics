@@ -1,7 +1,5 @@
 use anyhow::Result;
 
-use std::process::Command;
-
 use crate::models::device::BiosInfo;
 
 pub fn collect()
@@ -35,13 +33,11 @@ fn get_dmidecode(
 -> String
 {
     let output =
-        Command::new("sudo")
-            .args([
-                "dmidecode",
-                "-s",
-                field
-            ])
-            .output();
+        crate::sudo::output(&[
+            "dmidecode",
+            "-s",
+            field,
+        ]);
 
     match output {
 

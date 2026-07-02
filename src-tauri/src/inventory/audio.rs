@@ -3,72 +3,86 @@ use std::process::Command;
 
 use crate::models::device::AudioInfo;
 
-/// Collects the primary audio controller's manufacturer and model.
-/// Port of Audio.py: parse the first `lspci` line containing "audio",
-/// take the text after ": " as the model, and match a known vendor name.
-pub fn collect() -> Result<AudioInfo> {
+pub fn collect() -> Result<Option<AudioInfo>> {
+    let playback = Command::new("aplay").arg("-l").output();
+    let playback_text = match playback {
+        Ok(output) => String::from_utf8_lossy(&output.stdout).to_string(),
+        Err(_) => String::new(),
+    };
 
-    // WSL has no real PCI audio device — use the Windows host.
-    if crate::inventory::wslhost::is_wsl() {
-        return Ok(crate::inventory::wslhost::audio());
+    let capture = Command::new("arecord").arg("-l").output();
+    let capture_text = match capture {
+        Ok(output) => String::from_utf8_lossy(&output.stdout).to_string(),
+        Err(_) => String::new(),
+    };
+
+    if playback_text.trim().is_empty() && capture_text.trim().is_empty() {
+        return Ok(None);
     }
 
-    let mut model = String::new();
-    let mut manufacturer = String::new();
+    let codec = detect_codec(&playback_text, &capture_text);
+    let speaker_type = detect_speaker_type(&playback_text);
+    let mic_type = detect_mic_type(&capture_text);
+    let jack_type = detect_jack_type(&speaker_type, &mic_type);
 
-    let output =
-        Command::new("lspci")
-            .output();
+    Ok(Some(AudioInfo {
+        codec,
+        speaker_type,
+        mic_type,
+        jack_type,
+    }))
+}
 
-    if let Ok(o) = output {
-
-        let text =
-            String::from_utf8_lossy(&o.stdout);
-
-        // lspci | grep -i 'audio' | head -1
-        let audio_line =
-            text.lines()
-                .find(|l| l.to_lowercase().contains("audio"));
-
-        if let Some(line) = audio_line {
-
-            // Split once on ": " — the remainder is the device description.
-            if let Some((_, rest)) = line.split_once(": ") {
-
-                model = rest.trim().to_string();
-
-                let vendors = [
-                    "Intel", "Realtek", "AMD", "NVIDIA",
-                    "Creative", "Qualcomm", "Conexant",
-                    "Cirrus", "ESS", "MediaTek",
-                ];
-
-                let lower = model.to_lowercase();
-
-                for v in vendors {
-                    if lower.contains(v.to_lowercase().as_str()) {
-                        manufacturer = v.to_string();
-                        break;
-                    }
-                }
+fn detect_codec(playback_text: &str, capture_text: &str) -> String {
+    for text in [playback_text, capture_text] {
+        for line in text.lines() {
+            let trimmed = line.trim();
+            if trimmed.contains("card") && trimmed.contains("device") {
+                return trimmed.to_string();
             }
         }
     }
 
-    Ok(
-        AudioInfo {
-            manufacturer:
-                if manufacturer.is_empty() {
-                    "Unknown".to_string()
-                } else {
-                    manufacturer
-                },
-            model:
-                if model.is_empty() {
-                    "Unknown".to_string()
-                } else {
-                    model
-                },
-        }
-    )
+    "Unknown".to_string()
+}
+
+fn detect_speaker_type(playback_text: &str) -> String {
+    let lower = playback_text.to_lowercase();
+
+    if lower.contains("hdmi") {
+        "HDMI".to_string()
+    } else if lower.contains("analog") {
+        "Analog".to_string()
+    } else if lower.contains("digital") {
+        "Digital".to_string()
+    } else if lower.contains("headphone") {
+        "Headphones".to_string()
+    } else {
+        "Unknown".to_string()
+    }
+}
+
+fn detect_mic_type(capture_text: &str) -> String {
+    let lower = capture_text.to_lowercase();
+
+    if lower.contains("mic") {
+        "Built-in Mic".to_string()
+    } else if lower.contains("analog") {
+        "Analog Mic".to_string()
+    } else {
+        "Unknown".to_string()
+    }
+}
+
+fn detect_jack_type(speaker_type: &str, mic_type: &str) -> String {
+    let lower_speaker = speaker_type.to_lowercase();
+    let lower_mic = mic_type.to_lowercase();
+
+    if lower_speaker.contains("analog") || lower_mic.contains("analog") {
+        "3.5mm Jack".to_string()
+    } else if lower_speaker.contains("hdmi") {
+        "HDMI".to_string()
+    } else {
+        "Unknown".to_string()
+    }
 }

@@ -1,117 +1,156 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import {
-  Package,
   Plus,
   Archive,
-  Calendar,
-  User,
-  CheckCircle2,
-  AlertCircle,
-  MapPin,
+  Trash2,
+  Edit2,
 } from "lucide-react";
 
+// Mirrors the LotRow struct returned by the Rust `get_lots` command
+// (PRD §11.2 — lots table).
 interface LOT {
-  id: string;
+  id: number;
   lotName: string;
-  customerName: string;
+  customer: string;
   location: string;
-  createdDate: string;
-  inspector: string;
-  deviceCount: number;
-  inspectedCount: number;
-  status: "active" | "completed" | "archived";
+  inspectionDate: string;
+  status: string;
 }
-
-const mockLOTs: LOT[] = [
-  {
-    id: "1",
-    lotName: "CLY-003",
-    customerName: "Dell Technologies",
-    location: "Warehouse A",
-    createdDate: "2026-06-07",
-    inspector: "Ravikiran K.",
-    deviceCount: 48,
-    inspectedCount: 32,
-    status: "active",
-  },
-  {
-    id: "2",
-    lotName: "CLY-002",
-    customerName: "HP Inc.",
-    location: "Warehouse A",
-    createdDate: "2026-06-05",
-    inspector: "Priya S.",
-    deviceCount: 60,
-    inspectedCount: 60,
-    status: "completed",
-  },
-  {
-    id: "3",
-    lotName: "CLY-001",
-    customerName: "Lenovo Group",
-    location: "Warehouse B",
-    createdDate: "2026-06-03",
-    inspector: "Mohamed A.",
-    deviceCount: 45,
-    inspectedCount: 45,
-    status: "completed",
-  },
-];
 
 interface LOTManagementProps {
   onSelectLOT: (id: string) => void;
 }
 
 export function LOTManagement({ onSelectLOT }: LOTManagementProps) {
-  const [lots] = useState<LOT[]>(mockLOTs);
+  const [lots, setLots] = useState<LOT[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [formData, setFormData] = useState({
     lotName: "",
-    customerName: "",
+    customer: "",
     location: "",
-    remarks: "",
   });
 
-  const activeLOT = lots.find((lot) => lot.status === "active");
+  const loadLots = useCallback(async () => {
+    setLoading(true);
+    try {
+      const rows = await invoke<LOT[]>("get_lots");
+      setLots(rows);
+    } catch (err) {
+      console.error("Failed to load LOTs:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadLots();
+  }, [loadLots]);
 
   const handleCreateNew = () => {
+    setEditingId(null);
     setShowForm(true);
-    setFormData({ lotName: "", customerName: "", location: "", remarks: "" });
+    setFormData({ lotName: "", customer: "", location: "" });
+  };
+
+  const handleEdit = (lot: LOT) => {
+    setEditingId(lot.id);
+    setShowForm(true);
+    setFormData({
+      lotName: lot.lotName,
+      customer: lot.customer,
+      location: lot.location,
+    });
   };
 
   const handleCancel = () => {
     setShowForm(false);
-    setFormData({ lotName: "", customerName: "", location: "", remarks: "" });
+    setEditingId(null);
+    setFormData({ lotName: "", customer: "", location: "" });
   };
 
-  const handleSave = () => {
-    console.log("Creating LOT:", formData);
-    setShowForm(false);
-  };
-
-  const getStatusBadge = (status: LOT["status"]) => {
-    switch (status) {
-      case "active":
-        return (
-          <span className="flex items-center gap-1 text-xs text-blue-700 bg-blue-100 px-2 py-0.5 rounded">
-            <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-            Active
-          </span>
-        );
-      case "completed":
-        return (
-          <span className="flex items-center gap-1 text-xs text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
-            <CheckCircle2 size={12} />
-            Completed
-          </span>
-        );
-      case "archived":
-        return (
-          <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
-            Archived
-          </span>
-        );
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      if (editingId !== null) {
+        await invoke("update_lot", {
+          id: editingId,
+          lotName: formData.lotName,
+          customer: formData.customer,
+          location: formData.location,
+        });
+        console.log("Updated LOT id:", editingId);
+      } else {
+        const newId = await invoke<number>("create_lot", {
+          lotName: formData.lotName,
+          customer: formData.customer,
+          location: formData.location,
+        });
+        console.log("Created LOT in lots table with id:", newId);
+      }
+      setShowForm(false);
+      setEditingId(null);
+      setFormData({ lotName: "", customer: "", location: "" });
+      await loadLots();
+    } catch (err) {
+      console.error("Failed to save LOT:", err);
+      alert(`Failed to save LOT: ${err}`);
+    } finally {
+      setSaving(false);
     }
+  };
+
+  const handleArchive = async (lot: LOT) => {
+    try {
+      await invoke("archive_lot", { id: lot.id });
+      await loadLots();
+    } catch (err) {
+      console.error("Failed to archive LOT:", err);
+      alert(`Failed to archive LOT: ${err}`);
+    }
+  };
+
+  const handleDelete = async (lot: LOT) => {
+    if (
+      !window.confirm(`Delete LOT "${lot.lotName}"? This cannot be undone.`)
+    ) {
+      return;
+    }
+    try {
+      await invoke("delete_lot", { id: lot.id });
+      await loadLots();
+    } catch (err) {
+      console.error("Failed to delete LOT:", err);
+      alert(`Failed to delete LOT: ${err}`);
+    }
+  };
+
+  // PRD LOT statuses: ACTIVE / COMPLETED / CANCELLED.
+  const getStatusBadge = (status: string) => {
+    const s = status.toUpperCase();
+    if (s === "COMPLETED") {
+      return (
+        <span className="text-xs text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded w-fit">
+          Completed
+        </span>
+      );
+    }
+    if (s === "CANCELLED") {
+      return (
+        <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded w-fit">
+          Cancelled
+        </span>
+      );
+    }
+    return (
+      <span className="flex items-center gap-1 text-xs text-blue-700 bg-blue-100 px-2 py-0.5 rounded w-fit">
+        <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+        Active
+      </span>
+    );
   };
 
   return (
@@ -123,57 +162,13 @@ export function LOTManagement({ onSelectLOT }: LOTManagementProps) {
         </p>
       </div>
 
-      {/* Current Active LOT Card */}
-      {activeLOT && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <div className="flex items-start justify-between">
-            <div className="flex items-start gap-3">
-              <div className="w-12 h-12 rounded-lg bg-blue-600 flex items-center justify-center text-white shrink-0">
-                <Package size={24} />
-              </div>
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <h3 className="text-blue-900">Current Active LOT</h3>
-                  <span className="flex items-center gap-1 text-xs text-blue-700 bg-blue-100 px-2 py-0.5 rounded">
-                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-                    Active
-                  </span>
-                </div>
-                <div className="text-sm text-blue-800 font-medium">
-                  {activeLOT.lotName} · {activeLOT.customerName}
-                </div>
-                <div className="flex items-center gap-4 mt-2 text-xs text-blue-700">
-                  <span>Created: {activeLOT.createdDate}</span>
-                  <span>·</span>
-                  <span>Inspector: {activeLOT.inspector}</span>
-                  <span>·</span>
-                  <span>
-                    Progress: {activeLOT.inspectedCount}/{activeLOT.deviceCount}
-                  </span>
-                </div>
-                <div className="mt-2">
-                  <div className="h-2 bg-blue-200 rounded-full overflow-hidden w-48">
-                    <div
-                      className="h-full bg-blue-600 rounded-full"
-                      style={{
-                        width: `${(activeLOT.inspectedCount / activeLOT.deviceCount) * 100}%`,
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* LOT List */}
       <div className="bg-white rounded-lg border border-slate-200">
         <div className="p-4 border-b border-slate-200 flex items-center justify-between">
           <div>
             <h3 className="text-slate-700">Recent LOTs</h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              {lots.length} LOTs on this USB
+              {loading ? "Loading…" : `${lots.length} LOTs on this USB`}
             </p>
           </div>
           <button
@@ -196,16 +191,10 @@ export function LOTManagement({ onSelectLOT }: LOTManagementProps) {
                   Customer
                 </th>
                 <th className="text-left text-xs text-slate-500 px-4 py-3">
-                  Created Date
+                  Location
                 </th>
                 <th className="text-left text-xs text-slate-500 px-4 py-3">
-                  Inspector
-                </th>
-                <th className="text-left text-xs text-slate-500 px-4 py-3">
-                  Device Count
-                </th>
-                <th className="text-left text-xs text-slate-500 px-4 py-3">
-                  Progress
+                  Inspection Date
                 </th>
                 <th className="text-left text-xs text-slate-500 px-4 py-3">
                   Status
@@ -216,65 +205,67 @@ export function LOTManagement({ onSelectLOT }: LOTManagementProps) {
               </tr>
             </thead>
             <tbody>
-              {lots.map((lot) => {
-                const progress = Math.round(
-                  (lot.inspectedCount / lot.deviceCount) * 100
-                );
-                return (
-                  <tr
-                    key={lot.id}
-                    className="border-b border-slate-50 hover:bg-slate-50 transition-colors"
+              {!loading && lots.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={6}
+                    className="px-4 py-8 text-center text-sm text-slate-400"
                   >
-                    <td className="px-4 py-3">
-                      <span className="text-slate-700 font-medium">
-                        {lot.lotName}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {lot.customerName}
-                    </td>
-                    <td className="px-4 py-3 text-slate-500">{lot.createdDate}</td>
-                    <td className="px-4 py-3 text-slate-600">{lot.inspector}</td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {lot.deviceCount}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="h-1.5 w-20 bg-slate-100 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full ${
-                              progress === 100 ? "bg-emerald-500" : "bg-blue-500"
-                            }`}
-                            style={{ width: `${progress}%` }}
-                          />
-                        </div>
-                        <span className="text-xs text-slate-600">
-                          {lot.inspectedCount}/{lot.deviceCount}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">{getStatusBadge(lot.status)}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        {lot.status !== "active" && (
-                          <button
-                            onClick={() => onSelectLOT(lot.id)}
-                            className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-600 px-2 py-1 rounded transition-colors"
-                          >
-                            Select
-                          </button>
-                        )}
-                        {lot.status === "completed" && (
-                          <button className="text-xs bg-slate-50 hover:bg-slate-100 text-slate-600 px-2 py-1 rounded transition-colors">
-                            <Archive size={12} className="inline mr-1" />
-                            Archive
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+                    No LOTs yet. Click “Create New LOT” to add one.
+                  </td>
+                </tr>
+              )}
+              {lots.map((lot) => (
+                <tr
+                  key={lot.id}
+                  className="border-b border-slate-50 hover:bg-slate-50 transition-colors"
+                >
+                  <td className="px-4 py-3">
+                    <span className="text-slate-700 font-medium">
+                      {lot.lotName}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">{lot.customer}</td>
+                  <td className="px-4 py-3 text-slate-600">{lot.location}</td>
+                  <td className="px-4 py-3 text-slate-500">
+                    {lot.inspectionDate}
+                  </td>
+                  <td className="px-4 py-3">{getStatusBadge(lot.status)}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => onSelectLOT(String(lot.id))}
+                        className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-600 px-2 py-1 rounded transition-colors"
+                      >
+                        Select
+                      </button>
+                      <button
+                        onClick={() => handleEdit(lot)}
+                        className="text-xs bg-slate-50 hover:bg-slate-100 text-slate-600 px-2 py-1 rounded transition-colors"
+                      >
+                        <Edit2 size={12} className="inline mr-1" />
+                        Edit
+                      </button>
+                      {lot.status.toUpperCase() !== "CANCELLED" && (
+                        <button
+                          onClick={() => handleArchive(lot)}
+                          className="text-xs bg-slate-50 hover:bg-slate-100 text-slate-600 px-2 py-1 rounded transition-colors"
+                        >
+                          <Archive size={12} className="inline mr-1" />
+                          Archive
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleDelete(lot)}
+                        className="text-xs bg-red-50 hover:bg-red-100 text-red-600 px-2 py-1 rounded transition-colors"
+                      >
+                        <Trash2 size={12} className="inline mr-1" />
+                        Delete
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
@@ -285,9 +276,13 @@ export function LOTManagement({ onSelectLOT }: LOTManagementProps) {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
             <div className="p-4 border-b border-slate-200">
-              <h3 className="text-slate-800">Create New LOT</h3>
+              <h3 className="text-slate-800">
+                {editingId !== null ? "Edit LOT" : "Create New LOT"}
+              </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                Start a new refurbishment LOT
+                {editingId !== null
+                  ? "Update this LOT's details"
+                  : "Start a new refurbishment LOT"}
               </p>
             </div>
             <div className="p-4 space-y-4">
@@ -311,9 +306,9 @@ export function LOTManagement({ onSelectLOT }: LOTManagementProps) {
                 </label>
                 <input
                   type="text"
-                  value={formData.customerName}
+                  value={formData.customer}
                   onChange={(e) =>
-                    setFormData({ ...formData, customerName: e.target.value })
+                    setFormData({ ...formData, customer: e.target.value })
                   }
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Enter customer name"
@@ -333,20 +328,6 @@ export function LOTManagement({ onSelectLOT }: LOTManagementProps) {
                   placeholder="e.g., Warehouse A"
                 />
               </div>
-              <div>
-                <label className="block text-sm text-slate-700 mb-1">
-                  Remarks (Optional)
-                </label>
-                <textarea
-                  value={formData.remarks}
-                  onChange={(e) =>
-                    setFormData({ ...formData, remarks: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Add any additional notes"
-                  rows={3}
-                />
-              </div>
             </div>
             <div className="p-4 border-t border-slate-200 flex gap-2 justify-end">
               <button
@@ -358,11 +339,18 @@ export function LOTManagement({ onSelectLOT }: LOTManagementProps) {
               <button
                 onClick={handleSave}
                 disabled={
-                  !formData.lotName || !formData.customerName || !formData.location
+                  saving ||
+                  !formData.lotName ||
+                  !formData.customer ||
+                  !formData.location
                 }
                 className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Create LOT
+                {saving
+                  ? "Saving..."
+                  : editingId !== null
+                  ? "Update LOT"
+                  : "Create LOT"}
               </button>
             </div>
           </div>

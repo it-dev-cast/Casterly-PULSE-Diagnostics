@@ -52,15 +52,15 @@ export function WorkflowSidebar({
   onNavigate,
 }: WorkflowSidebarProps) {
   return (
-    <aside className="fixed left-0 top-14 bottom-0 w-64 bg-slate-900 border-r border-slate-700 flex flex-col overflow-hidden z-40">
+    <aside className="fixed left-0 top-16 bottom-0 w-64 bg-[#0B2545] border-r border-[#123a63] flex flex-col overflow-hidden z-40">
       {/* Navigation links */}
-      <div className="border-b border-slate-700">
+      <div className="border-b border-[#123a63]">
         <button
           onClick={() => onNavigate && onNavigate("startup-home")}
-          className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-xs transition-colors ${
+          className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-sm font-semibold text-white transition-colors ${
             currentStage === "startup-home"
-              ? "bg-slate-700 text-white"
-              : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+              ? "bg-[#123a63]"
+              : "hover:bg-[#123a63]/60"
           }`}
         >
           <Home size={14} />
@@ -68,10 +68,10 @@ export function WorkflowSidebar({
         </button>
         <button
           onClick={() => onNavigate && onNavigate("upload-queue")}
-          className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-xs transition-colors ${
+          className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-sm font-semibold text-white transition-colors ${
             currentStage === "upload-queue"
-              ? "bg-slate-700 text-white"
-              : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+              ? "bg-[#123a63]"
+              : "hover:bg-[#123a63]/60"
           }`}
         >
           <Upload size={14} />
@@ -79,10 +79,10 @@ export function WorkflowSidebar({
         </button>
         <button
           onClick={() => onNavigate && onNavigate("sync-status")}
-          className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-xs transition-colors ${
+          className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-sm font-semibold text-white transition-colors ${
             currentStage === "sync-status"
-              ? "bg-slate-700 text-white"
-              : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+              ? "bg-[#123a63]"
+              : "hover:bg-[#123a63]/60"
           }`}
         >
           <Cloud size={14} />
@@ -90,10 +90,10 @@ export function WorkflowSidebar({
         </button>
         <button
           onClick={() => onNavigate && onNavigate("inspection-manager")}
-          className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-xs transition-colors ${
+          className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-sm font-semibold text-white transition-colors ${
             currentStage === "inspection-manager"
-              ? "bg-slate-700 text-white"
-              : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+              ? "bg-[#123a63]"
+              : "hover:bg-[#123a63]/60"
           }`}
         >
           <FolderSearch size={14} />
@@ -104,7 +104,7 @@ export function WorkflowSidebar({
       {/* Workflow steps */}
       <div className="flex-1 overflow-y-auto py-1">
         <div className="px-3 py-2">
-          <span className="text-[10px] text-slate-500 uppercase tracking-wider">Inspection Workflow</span>
+          <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Inspection Workflow</span>
         </div>
         {stages.map((stage, index) => {
           const cfg = statusConfig[stage.status];
@@ -116,10 +116,10 @@ export function WorkflowSidebar({
             <button
               key={stage.id}
               onClick={() => onStageClick(stage.id)}
-              className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-xs transition-colors relative ${
+              className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-sm font-semibold text-white transition-colors relative ${
                 isActive
-                  ? "bg-blue-900/40 text-white"
-                  : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+                  ? "bg-blue-900/40"
+                  : "hover:bg-[#123a63]/60"
               }`}
             >
               {isActive && (
@@ -129,11 +129,11 @@ export function WorkflowSidebar({
                 <StageIcon size={14} />
               </div>
               <span className="flex-1 text-left">{stage.label}</span>
-              <div className={`shrink-0 ${cfg.color}`}>
+              <div className={`shrink-0 flex items-center justify-center ${cfg.color}`}>
                 {stage.status === "active" ? (
-                  <Loader2 size={12} className="animate-spin" />
+                  <Loader2 size={16} strokeWidth={2.75} className="animate-spin" />
                 ) : (
-                  <StatusIcon size={12} />
+                  <StatusIcon size={16} strokeWidth={2.75} />
                 )}
               </div>
             </button>
@@ -141,17 +141,6 @@ export function WorkflowSidebar({
         })}
       </div>
 
-      {/* Asset tag placeholder */}
-      <div className="p-3 border-t border-slate-700 text-[10px] text-slate-500">
-        <div className="flex justify-between">
-          <span>Asset Tag</span>
-          <span className="text-slate-400 font-mono">AT-00892</span>
-        </div>
-        <div className="flex justify-between mt-1">
-          <span>LOT</span>
-          <span className="text-slate-400 font-mono">CLY-003</span>
-        </div>
-      </div>
     </aside>
   );
 }

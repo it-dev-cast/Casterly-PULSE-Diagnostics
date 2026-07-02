@@ -4,7 +4,42 @@ import {
   useState,
 } from "react";
 
+export type GradeResult = "pass" | "fail" | null;
+
+export interface GradingData {
+  grades: Record<string, GradeResult>;
+  selectedDefects: Record<string, string[]>;
+  remarks: string;
+}
+
+export interface SpeakerTestData {
+  result: "pass" | "fail" | null;
+}
+
+export interface WebcamTestData {
+  result: "pass" | "fail" | null;
+}
+
+export interface KeyboardTestData {
+  pressed: string[];
+  failed: string[];
+  result: "pass" | "fail" | null;
+}
+
+export interface TouchpadTestData {
+  leftClick: boolean;
+  rightClick: boolean;
+  movement: boolean;
+  scroll: boolean;
+  result: "pass" | "fail" | null;
+}
+
+export interface BatteryAssessmentData {
+  result: "pass" | "fail" | null;
+}
+
 export interface InspectionData {
+  // Hardware inventory
   systemInfo: any;
   cpuInfo: any;
   memoryInfo: any;
@@ -15,25 +50,51 @@ export interface InspectionData {
   gpuInfo: any;
   cameraInfo: any;
   audioInfo: any;
-  motherboardInfo: any;
-  bluetoothInfo: any;
 
   scanCompleted: boolean;
-
   scanTimestamp: number | null;
-
   inspectionStartTime: number | null;
+
+  // Manual cosmetic grading
+  grading: GradingData;
+
+  // Diagnostic tests
+  speakerTest: SpeakerTestData;
+  webcamTest: WebcamTestData;
+  keyboardTest: KeyboardTestData;
+  touchpadTest: TouchpadTestData;
+  batteryAssessment: BatteryAssessmentData;
 }
 
 interface InspectionContextType {
   data: InspectionData;
-
   setData: React.Dispatch<
     React.SetStateAction<InspectionData>
   >;
-
   resetInspection: () => void;
 }
+
+const defaultGradingData: GradingData = {
+  grades: {
+    lcd: null,
+    topCover: null,
+    bezel: null,
+    palmrest: null,
+    bottomCover: null,
+    keyboard: null,
+    touchpad: null,
+  },
+  selectedDefects: {
+    lcd: [],
+    topCover: [],
+    bezel: [],
+    palmrest: [],
+    bottomCover: [],
+    keyboard: [],
+    touchpad: [],
+  },
+  remarks: "",
+};
 
 const InspectionContext =
   createContext<InspectionContextType | null>(
@@ -57,8 +118,6 @@ export function InspectionProvider({
       gpuInfo: null,
       cameraInfo: null,
       audioInfo: null,
-      motherboardInfo: null,
-      bluetoothInfo: null,
 
       scanCompleted: false,
 
@@ -66,6 +125,20 @@ export function InspectionProvider({
 
       inspectionStartTime:
         Date.now(),
+
+      grading: defaultGradingData,
+
+      speakerTest: { result: null },
+      webcamTest: { result: null },
+      keyboardTest: { pressed: [], failed: [], result: null },
+      touchpadTest: {
+        leftClick: false,
+        rightClick: false,
+        movement: false,
+        scroll: false,
+        result: null,
+      },
+      batteryAssessment: { result: null },
     });
 
   const resetInspection = () =>
@@ -80,8 +153,6 @@ export function InspectionProvider({
       gpuInfo: null,
       cameraInfo: null,
       audioInfo: null,
-      motherboardInfo: null,
-      bluetoothInfo: null,
 
       scanCompleted: false,
 
@@ -89,6 +160,20 @@ export function InspectionProvider({
 
       inspectionStartTime:
         Date.now(),
+
+      grading: defaultGradingData,
+
+      speakerTest: { result: null },
+      webcamTest: { result: null },
+      keyboardTest: { pressed: [], failed: [], result: null },
+      touchpadTest: {
+        leftClick: false,
+        rightClick: false,
+        movement: false,
+        scroll: false,
+        result: null,
+      },
+      batteryAssessment: { result: null },
     });
 
   return (

@@ -10,6 +10,3 @@ pub mod display;
 pub mod network;
 pub mod camera;
 pub mod audio;
-pub mod motherboard;
-pub mod bluetooth;
-pub mod wslhost;

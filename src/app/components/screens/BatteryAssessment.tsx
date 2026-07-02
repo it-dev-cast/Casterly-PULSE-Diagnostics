@@ -1,25 +1,79 @@
 import { Battery, BatteryCharging, AlertTriangle, CheckCircle2, XCircle, ChevronRight } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useInspection } from "../../context/InspectionContext";
+
+interface BatteryInfo {
+  manufacturer: string;
+  model: string;
+  serial_number: string;
+  technology: string;
+  status: string;
+  cycle_count: number;
+  design_capacity_mwh: number;
+  full_charge_capacity_mwh: number;
+  current_capacity_mwh: number;
+  voltage_mv: number;
+}
 
 interface BatteryAssessmentProps {
   onNext: () => void;
 }
 
 export function BatteryAssessment({ onNext }: BatteryAssessmentProps) {
-  const [result, setResult] = useState<"pass" | "fail" | null>(null);
+  const { data, setData } = useInspection();
+  const batteryInfo: BatteryInfo | null = data.batteryInfo;
 
-  const health = 78;
-  const cycleCount = 312;
-  const designCapacity = 45;
-  const fullChargeCapacity = 35.1;
-  const voltage = 11.4;
-  const status = "Charging";
+  const [result, setResult] = useState<"pass" | "fail" | null>(data.batteryAssessment.result);
+
+  // Persist the assessment result whenever the user makes a decision.
+  useEffect(() => {
+    if (data.batteryAssessment.result !== result) {
+      setData((prev) => ({
+        ...prev,
+        batteryAssessment: { result },
+      }));
+    }
+  }, [result, setData, data.batteryAssessment.result]);
+
+  // Fallback defaults for layout when no battery is present.
+  const designCapacity = batteryInfo && batteryInfo.design_capacity_mwh > 0
+    ? batteryInfo.design_capacity_mwh / 1000
+    : 45;
+  const fullChargeCapacity = batteryInfo && batteryInfo.full_charge_capacity_mwh > 0
+    ? batteryInfo.full_charge_capacity_mwh / 1000
+    : 35.1;
+  const cycleCount = batteryInfo ? batteryInfo.cycle_count : 0;
+  const voltage = batteryInfo ? batteryInfo.voltage_mv / 1000 : 11.4;
+  const status = batteryInfo ? batteryInfo.status : "Unknown";
+  const health = designCapacity > 0
+    ? Math.round((fullChargeCapacity / designCapacity) * 100)
+    : 78;
 
   const isHealthWarning = health < 80;
   const isCycleWarning = cycleCount > 500;
 
   const healthColor = health >= 80 ? "text-emerald-600" : health >= 60 ? "text-amber-600" : "text-red-600";
   const healthBg = health >= 80 ? "#10b981" : health >= 60 ? "#f59e0b" : "#ef4444";
+
+  if (!batteryInfo) {
+    return (
+      <div className="space-y-5">
+        <div>
+          <h1 className="text-slate-800">Battery Assessment</h1>
+          <p className="text-sm text-slate-500 mt-0.5">No battery detected on this device.</p>
+        </div>
+        <div className="flex justify-end">
+          <button
+            onClick={onNext}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-sm px-5 py-2.5 rounded-lg transition-colors"
+          >
+            Continue to Final Review
+            <ChevronRight size={15} />
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">
@@ -64,11 +118,11 @@ export function BatteryAssessment({ onNext }: BatteryAssessmentProps) {
           <h3 className="text-slate-700 mb-4">Battery Metrics</h3>
           <div className="grid grid-cols-2 gap-4">
             {[
-              { label: "Design Capacity", value: `${designCapacity} Wh`, warn: false },
-              { label: "Full Charge Capacity", value: `${fullChargeCapacity} Wh`, warn: false },
+              { label: "Design Capacity", value: `${designCapacity.toFixed(1)} Wh`, warn: false },
+              { label: "Full Charge Capacity", value: `${fullChargeCapacity.toFixed(1)} Wh`, warn: false },
               { label: "Health", value: `${health}%`, warn: isHealthWarning },
               { label: "Cycle Count", value: cycleCount.toString(), warn: isCycleWarning },
-              { label: "Current Voltage", value: `${voltage} V`, warn: false },
+              { label: "Current Voltage", value: `${voltage.toFixed(2)} V`, warn: false },
               { label: "Charge Status", value: status, warn: false },
             ].map((item) => (
               <div key={item.label} className={`rounded-lg p-3 border ${
@@ -90,7 +144,7 @@ export function BatteryAssessment({ onNext }: BatteryAssessmentProps) {
       <div className="bg-white rounded-xl border border-slate-200 p-4">
         <div className="flex justify-between text-sm mb-2">
           <span className="text-slate-700">Capacity vs Design</span>
-          <span className="text-slate-500">{fullChargeCapacity} / {designCapacity} Wh ({health}%)</span>
+          <span className="text-slate-500">{fullChargeCapacity.toFixed(1)} / {designCapacity.toFixed(1)} Wh ({health}%)</span>
         </div>
         <div className="h-4 bg-slate-100 rounded-full overflow-hidden">
           <div
