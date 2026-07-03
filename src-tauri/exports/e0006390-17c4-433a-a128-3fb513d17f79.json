@@ -1,0 +1,53 @@
+{
+  "battery_assessment": {
+    "result": "PENDING"
+  },
+  "battery_health": null,
+  "grading": {
+    "bezel_defects": [],
+    "bezel_status": "PENDING",
+    "bottom_cover_defects": [],
+    "bottom_cover_status": "PENDING",
+    "keyboard_defects": [],
+    "keyboard_status": "PENDING",
+    "lcd_defects": [],
+    "lcd_status": "PENDING",
+    "palmrest_defects": [],
+    "palmrest_status": "PENDING",
+    "remarks": "",
+    "top_cover_defects": [],
+    "top_cover_status": "PENDING",
+    "touchpad_status": "PENDING"
+  },
+  "inspector": "",
+  "inventory": {
+    "audio": null,
+    "battery": null,
+    "camera": null,
+    "cpu": null,
+    "display": null,
+    "gpu": null,
+    "memory": null,
+    "network": null,
+    "storage": null,
+    "system": null
+  },
+  "keyboard_test": {
+    "result": "PENDING",
+    "unique_keys": 0
+  },
+  "lot_name": "",
+  "speaker_test": {
+    "result": "PENDING"
+  },
+  "timestamp": "02/07/2026 08:38:51",
+  "touchpad_test": {
+    "result": "PENDING"
+  },
+  "uploaded": false,
+  "usb_id": "UDIAG-2DE2B5BB",
+  "uuid": "e0006390-17c4-433a-a128-3fb513d17f79",
+  "webcam_test": {
+    "result": "PENDING"
+  }
+}

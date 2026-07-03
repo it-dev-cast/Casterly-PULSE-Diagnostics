@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { useInspection } from "../../context/InspectionContext";
 
 interface HardwareInventoryProps {
@@ -84,7 +85,7 @@ function renderSection(title: string, value: any) {
 }
 
 export function HardwareInventory({ onNext, isExecutionActive }: HardwareInventoryProps) {
-  const { data } = useInspection();
+  const { data, setData } = useInspection();
 
   const sections = [
     { title: "System Info", value: data.systemInfo },
@@ -113,6 +114,39 @@ export function HardwareInventory({ onNext, isExecutionActive }: HardwareInvento
     // the workflow again.
     if (!isExecutionActive) {
       return;
+    }
+
+    // Mirror every collected hardware category into its own reporting table
+    // (keyed on uuid + serial_number) as this step hands off to Manual
+    // Grading. The inspection UUID is generated once here (if not already
+    // set) and reused later by Save Inspection so both share the same id.
+    const uuid = data.uuid || crypto.randomUUID();
+    if (!data.uuid) {
+      setData((prev) => ({ ...prev, uuid }));
+    }
+
+    const serialNumber = data.systemInfo?.serial_number || "";
+    if (serialNumber) {
+      invoke("save_hardware_inventory", {
+        uuid,
+        serialNumber,
+        systemInfo: data.systemInfo,
+        cpuInfo: data.cpuInfo,
+        memoryInfo: data.memoryInfo,
+        storageInfo: data.storageInfo,
+        batteryInfo: data.batteryInfo,
+        networkInfo: data.networkInfo,
+        displayInfo: data.displayInfo,
+        gpuInfo: data.gpuInfo,
+        cameraInfo: data.cameraInfo,
+        audioInfo: data.audioInfo,
+      }).catch((err) => {
+        console.error("Failed to save hardware inventory report tables:", err);
+      });
+    } else {
+      console.warn(
+        "Skipping hardware inventory report save: no serial number collected yet.",
+      );
     }
 
     const timer = setTimeout(() => {

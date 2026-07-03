@@ -30,6 +30,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useInspection } from "../../context/InspectionContext";
+import { normalizeCapacity } from "../../utils/capacity";
 
 // Tauri IPC bridge — invoke() calls a named Rust command in src-tauri/
 import { invoke } from "@tauri-apps/api/core";
@@ -141,6 +142,7 @@ interface StorageDevice {
   serial: string;
   firmware: string;
   size_gb: number;
+  capacity_gb?: string;    // Manufacturer/marketed capacity (e.g. "512 GB"), if backend provides it
   transport: string;       // e.g. "NVMe", "SATA"
   storage_type: string;    // e.g. "SSD", "HDD"
   health_percent: number | null;   // SMART health; null if unavailable
@@ -350,7 +352,12 @@ export function SystemScan({ onNext, isExecutionActive }: SystemScanProps) {
   // IMPORTANT: All 8 calls are fire-and-forget (no await). They run concurrently
   // and the UI updates progressively as each one resolves.
   //
-  // GUARDS (both must pass before any invoke fires):
+  // GUARDS (all must pass before any invoke fires):
+  //   - isExecutionActive: this stage must actually be the active workflow
+  //     step (i.e. the user has clicked "Start Inspection" and progressed
+  //     here normally) -- prevents the real hardware scan from firing just
+  //     because the user clicked into this screen from the sidebar before
+  //     starting an inspection
   //   - data.scanCompleted: context already has a fresh scan → skip
   //   - scanAlreadyCompleted: module-level flag → prevents double-fire in
   //     React Strict Mode or accidental remounts
@@ -363,6 +370,14 @@ export function SystemScan({ onNext, isExecutionActive }: SystemScanProps) {
   //   4. Increase the threshold in Effect 3 from 8 to 9 (or whatever new total)
   // ===========================================================================
   useEffect(() => {
+
+    // Guard 0: don't auto-run the actual hardware scan until this stage is
+    // genuinely the active workflow step. Just navigating here (e.g. via the
+    // sidebar) before clicking "Start Inspection" should not kick off a scan.
+    if (!isExecutionActive) {
+      console.log("SYSTEM SCAN NOT ACTIVE - skipping until Start Inspection");
+      return;
+    }
 
     // Guard 1: cached scan exists in context
     if (data.scanCompleted) {
@@ -541,7 +556,7 @@ export function SystemScan({ onNext, isExecutionActive }: SystemScanProps) {
         setCompletedCalls((prev) => prev + 1);
       });
 
-  }, []); // Empty deps — intentionally runs only on initial mount
+  }, [isExecutionActive]); // Re-evaluates if this stage becomes active after a premature, non-active mount
 
 
   // ===========================================================================
@@ -703,7 +718,7 @@ export function SystemScan({ onNext, isExecutionActive }: SystemScanProps) {
             { label: "Type", value: primaryDrive?.storage_type || "Scanning..." },
             { label: "Model", value: primaryDrive?.model || "Scanning..." },
             { label: "Serial", value: primaryDrive?.serial || "Scanning..." },
-            { label: "Capacity", value: primaryDrive ? `${primaryDrive.size_gb.toFixed(0)} GB` : "Scanning..." },
+            { label: "Capacity", value: primaryDrive?.capacity_gb || (primaryDrive && normalizeCapacity(primaryDrive.size_gb)) || "Scanning..." },
             { label: "Firmware", value: primaryDrive?.firmware || "N/A" },
             { label: "Transport", value: primaryDrive?.transport || "N/A" },
             { label: "Health", value: primaryDrive?.health_percent != null ? `${primaryDrive.health_percent}%` : "N/A" },

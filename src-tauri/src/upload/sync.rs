@@ -154,6 +154,260 @@ fn replace_child(
     post_insert(client, base_url, key, table, body)
 }
 
+/// Push the 10 hardware categories (already embedded in the inspection JSON
+/// under /inventory) into their own Supabase tables, mirroring the local
+/// SQLite report tables (see database/sqlite.rs). Single-object categories
+/// are upserted as one row; memory/storage/gpu can have multiple entries
+/// per inspection, so they're posted as an array with a composite
+/// on_conflict key (uuid, serial_number, <slot|device|bus_address>).
+fn upload_hardware_categories(
+    client: &reqwest::blocking::Client,
+    base_url: &str,
+    key: &str,
+    uuid: &str,
+    serial: &str,
+    inv: &Value,
+) -> Result<(), String> {
+    let system = g(inv, "/system");
+    if !system.is_null() {
+        let row = obj(vec![
+            ("uuid", s(uuid)),
+            ("serial_number", s(serial)),
+            ("device_uuid", g(&system, "/uuid")),
+            ("manufacturer", g(&system, "/manufacturer")),
+            ("model", g(&system, "/model")),
+            ("board_serial", g(&system, "/board_serial")),
+            ("bios_version", g(&system, "/bios_version")),
+        ]);
+        post_upsert(client, base_url, key, "system_info", "uuid,serial_number", &row)?;
+    }
+
+    let cpu = g(inv, "/cpu");
+    if !cpu.is_null() {
+        let row = obj(vec![
+            ("uuid", s(uuid)),
+            ("serial_number", s(serial)),
+            ("manufacturer", g(&cpu, "/manufacturer")),
+            ("model", g(&cpu, "/model")),
+            ("architecture", g(&cpu, "/architecture")),
+            ("sockets", g(&cpu, "/sockets")),
+            ("cores_per_socket", g(&cpu, "/cores_per_socket")),
+            ("threads", g(&cpu, "/threads")),
+            ("max_speed_mhz", g(&cpu, "/max_speed_mhz")),
+            ("min_speed_mhz", g(&cpu, "/min_speed_mhz")),
+            ("current_speed_mhz", g(&cpu, "/current_speed_mhz")),
+            ("cache_l1", g(&cpu, "/cache_l1")),
+            ("cache_l2", g(&cpu, "/cache_l2")),
+            ("cache_l3", g(&cpu, "/cache_l3")),
+            ("virtualization", g(&cpu, "/virtualization")),
+            ("hyper_threading", g(&cpu, "/hyper_threading")),
+        ]);
+        post_upsert(client, base_url, key, "cpu_info", "uuid,serial_number", &row)?;
+    }
+
+    let battery = g(inv, "/battery");
+    if !battery.is_null() {
+        let row = obj(vec![
+            ("uuid", s(uuid)),
+            ("serial_number", s(serial)),
+            ("manufacturer", g(&battery, "/manufacturer")),
+            ("model", g(&battery, "/model")),
+            ("battery_serial", g(&battery, "/serial_number")),
+            ("technology", g(&battery, "/technology")),
+            ("status", g(&battery, "/status")),
+            ("cycle_count", g(&battery, "/cycle_count")),
+            ("design_capacity_mwh", g(&battery, "/design_capacity_mwh")),
+            ("full_charge_capacity_mwh", g(&battery, "/full_charge_capacity_mwh")),
+            ("current_capacity_mwh", g(&battery, "/current_capacity_mwh")),
+            ("voltage_mv", g(&battery, "/voltage_mv")),
+            ("health_percent", g(&battery, "/health_percent")),
+        ]);
+        post_upsert(client, base_url, key, "battery_info", "uuid,serial_number", &row)?;
+    }
+
+    let network = g(inv, "/network");
+    if !network.is_null() {
+        let row = obj(vec![
+            ("uuid", s(uuid)),
+            ("serial_number", s(serial)),
+            ("wifi", g(&network, "/wifi")),
+            ("wifi_friendly", g(&network, "/wifi_friendly")),
+            ("wifi_mac", g(&network, "/wifi_mac")),
+            ("ethernet", g(&network, "/ethernet")),
+            ("ethernet_friendly", g(&network, "/ethernet_friendly")),
+            ("ethernet_mac", g(&network, "/ethernet_mac")),
+            ("bluetooth", g(&network, "/bluetooth")),
+        ]);
+        post_upsert(client, base_url, key, "network_info", "uuid,serial_number", &row)?;
+    }
+
+    let display = g(inv, "/display");
+    if !display.is_null() {
+        let row = obj(vec![
+            ("uuid", s(uuid)),
+            ("serial_number", s(serial)),
+            ("manufacturer", g(&display, "/manufacturer")),
+            ("model", g(&display, "/model")),
+            ("panel_part_number", g(&display, "/panel_part_number")),
+            ("resolution", g(&display, "/resolution")),
+            ("size_inches", g(&display, "/size_inches")),
+        ]);
+        post_upsert(client, base_url, key, "display_info", "uuid,serial_number", &row)?;
+    }
+
+    let camera = g(inv, "/camera");
+    if !camera.is_null() {
+        let row = obj(vec![
+            ("uuid", s(uuid)),
+            ("serial_number", s(serial)),
+            ("vendor", g(&camera, "/vendor")),
+            ("model", g(&camera, "/model")),
+            ("device", g(&camera, "/device")),
+            ("status", g(&camera, "/status")),
+        ]);
+        post_upsert(client, base_url, key, "camera_info", "uuid,serial_number", &row)?;
+    }
+
+    let audio = g(inv, "/audio");
+    if !audio.is_null() {
+        let row = obj(vec![
+            ("uuid", s(uuid)),
+            ("serial_number", s(serial)),
+            ("codec", g(&audio, "/codec")),
+            ("speaker_type", g(&audio, "/speaker_type")),
+            ("mic_type", g(&audio, "/mic_type")),
+            ("jack_type", g(&audio, "/jack_type")),
+        ]);
+        post_upsert(client, base_url, key, "audio_info", "uuid,serial_number", &row)?;
+    }
+
+    if let Value::Array(modules) = g(inv, "/memory") {
+        if !modules.is_empty() {
+            let rows: Vec<Value> = modules
+                .iter()
+                .enumerate()
+                .map(|(idx, m)| {
+                    // Descriptive only -- NOT part of the uniqueness key.
+                    // Onboard memory commonly reports the same slot
+                    // ("Motherboard") for every module, which used to
+                    // collide within a single batch upsert.
+                    let slot = m
+                        .get("slot")
+                        .and_then(|x| x.as_str())
+                        .filter(|s| !s.is_empty())
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| format!("SLOT-{}", idx));
+                    obj(vec![
+                        ("uuid", s(uuid)),
+                        ("serial_number", s(serial)),
+                        ("module_index", Value::from(idx as i64)),
+                        ("slot", s(&slot)),
+                        ("bank_locator", g(m, "/bank_locator")),
+                        ("size_mb", g(m, "/size_mb")),
+                        ("memory_type", g(m, "/memory_type")),
+                        ("manufacturer", g(m, "/manufacturer")),
+                        ("module_serial", g(m, "/serial")),
+                        ("part_number", g(m, "/part_number")),
+                        ("speed_mhz", g(m, "/speed_mhz")),
+                        ("is_empty", g(m, "/is_empty")),
+                        ("is_onboard", g(m, "/is_onboard")),
+                    ])
+                })
+                .collect();
+            post_upsert(
+                client,
+                base_url,
+                key,
+                "memory_info",
+                "uuid,serial_number,module_index",
+                &Value::Array(rows),
+            )?;
+        }
+    }
+
+    if let Value::Array(drives) = g(inv, "/storage") {
+        if !drives.is_empty() {
+            let rows: Vec<Value> = drives
+                .iter()
+                .enumerate()
+                .map(|(idx, d)| {
+                    let device = d
+                        .get("device")
+                        .and_then(|x| x.as_str())
+                        .filter(|s| !s.is_empty())
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| format!("DEVICE-{}", idx));
+                    obj(vec![
+                        ("uuid", s(uuid)),
+                        ("serial_number", s(serial)),
+                        ("drive_index", Value::from(idx as i64)),
+                        ("device", s(&device)),
+                        ("slot", g(d, "/slot")),
+                        ("model", g(d, "/model")),
+                        ("drive_serial", g(d, "/serial")),
+                        ("firmware", g(d, "/firmware")),
+                        ("size_gb", g(d, "/size_gb")),
+                        ("transport", g(d, "/transport")),
+                        ("storage_type", g(d, "/storage_type")),
+                        ("health_percent", g(d, "/health_percent")),
+                        ("temperature_c", g(d, "/temperature_c")),
+                        ("power_on_hours", g(d, "/power_on_hours")),
+                        ("power_cycles", g(d, "/power_cycles")),
+                        ("media_errors", g(d, "/media_errors")),
+                        ("critical_warning", g(d, "/critical_warning")),
+                    ])
+                })
+                .collect();
+            post_upsert(
+                client,
+                base_url,
+                key,
+                "storage_info",
+                "uuid,serial_number,drive_index",
+                &Value::Array(rows),
+            )?;
+        }
+    }
+
+    if let Value::Array(gpus) = g(inv, "/gpu") {
+        if !gpus.is_empty() {
+            let rows: Vec<Value> = gpus
+                .iter()
+                .enumerate()
+                .map(|(idx, gpu)| {
+                    let bus_address = gpu
+                        .get("bus_address")
+                        .and_then(|x| x.as_str())
+                        .filter(|s| !s.is_empty())
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| format!("GPU-{}", idx));
+                    obj(vec![
+                        ("uuid", s(uuid)),
+                        ("serial_number", s(serial)),
+                        ("gpu_index", Value::from(idx as i64)),
+                        ("bus_address", s(&bus_address)),
+                        ("vendor", g(gpu, "/vendor")),
+                        ("model", g(gpu, "/model")),
+                        ("driver", g(gpu, "/driver")),
+                        ("vram", g(gpu, "/vram")),
+                        ("output_resolution", g(gpu, "/output_resolution")),
+                    ])
+                })
+                .collect();
+            post_upsert(
+                client,
+                base_url,
+                key,
+                "gpu_info",
+                "uuid,serial_number,gpu_index",
+                &Value::Array(rows),
+            )?;
+        }
+    }
+
+    Ok(())
+}
+
 fn upload_one(
     client: &reqwest::blocking::Client,
     base_url: &str,
@@ -222,6 +476,11 @@ fn upload_one(
         ("camera", g(&inv, "/camera")),
     ]);
     replace_child(client, base_url, key, "hardware_specs", uuid, &hw_row)?;
+
+    // 3b) mirror the same 10 categories into their own normalized tables
+    // (system_info, cpu_info, memory_info, ...) alongside the JSONB blob
+    // above, matching the local SQLite report tables.
+    upload_hardware_categories(client, base_url, key, uuid, &serial, &inv)?;
 
     // 4) grading_results
     let gr_row = obj(vec![

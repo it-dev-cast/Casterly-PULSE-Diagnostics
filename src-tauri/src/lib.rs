@@ -30,7 +30,7 @@ use std::sync::Mutex;
 
 #[tauri::command]
 fn get_app_info() -> String {
-    "UDIAG 4.0 Ready".to_string()
+    "PULSE 4.0 Ready".to_string()
 }
 
 #[tauri::command]
@@ -151,10 +151,28 @@ fn get_camera_info() -> Result<Option<CameraInfo>, String> {
 }
 
 #[tauri::command]
-async fn start_webcam_test() -> Result<(), String> {
-    tokio::task::spawn_blocking(diagnostics::webcam::start_test)
+async fn start_webcam_test(handle: tauri::AppHandle) -> Result<(), String> {
+    // Pulse runs in kiosk mode with the main window pinned "always on top",
+    // which otherwise keeps the ffplay preview window stuck behind it.
+    // Drop the always-on-top pin while the preview is open so the OS/window
+    // manager can bring ffplay to the front, then restore kiosk mode once
+    // the preview window is closed (success or failure).
+    let main_window = handle.get_webview_window("main");
+    if let Some(window) = &main_window {
+        let _ = window.set_always_on_top(false);
+    }
+
+    let result = tokio::task::spawn_blocking(diagnostics::webcam::start_test)
         .await
-        .map_err(|e| format!("Webcam test task failed: {}", e))?
+        .map_err(|e| format!("Webcam test task failed: {}", e))
+        .and_then(|inner| inner);
+
+    if let Some(window) = &main_window {
+        let _ = window.set_always_on_top(true);
+        let _ = window.set_focus();
+    }
+
+    result
 }
 
 #[tauri::command]
@@ -417,6 +435,7 @@ fn save_inspection(
     lot_name: String,
     inspector: String,
     json_data: String,
+    uuid: Option<String>,
 ) -> Result<inspection::persist::SaveResult, String> {
     let conn = state
         .lock()
@@ -430,6 +449,51 @@ fn save_inspection(
         &inspector,
         &lot_name,
         &json_data,
+        uuid.as_deref(),
+    )
+}
+
+/// Persist the 10 hardware categories collected during System Scan into
+/// their own reporting tables (see database/sqlite.rs), keyed on
+/// (uuid, serial_number[, extra key]). Called once the Hardware Inventory
+/// screen hands off to Manual Grading. `uuid` is the inspection's UUID,
+/// generated client-side up front and later reused by `save_inspection` so
+/// both share the same identifier.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+fn save_hardware_inventory(
+    state: tauri::State<'_, Mutex<rusqlite::Connection>>,
+    uuid: String,
+    serial_number: String,
+    system_info: Option<serde_json::Value>,
+    cpu_info: Option<serde_json::Value>,
+    memory_info: Option<serde_json::Value>,
+    storage_info: Option<serde_json::Value>,
+    battery_info: Option<serde_json::Value>,
+    network_info: Option<serde_json::Value>,
+    display_info: Option<serde_json::Value>,
+    gpu_info: Option<serde_json::Value>,
+    camera_info: Option<serde_json::Value>,
+    audio_info: Option<serde_json::Value>,
+) -> Result<(), String> {
+    let conn = state
+        .lock()
+        .map_err(|e| format!("db lock poisoned: {}", e))?;
+
+    inspection::hardware_reports::save_all(
+        &conn,
+        &uuid,
+        &serial_number,
+        &system_info,
+        &cpu_info,
+        &memory_info,
+        &storage_info,
+        &battery_info,
+        &network_info,
+        &display_info,
+        &gpu_info,
+        &camera_info,
+        &audio_info,
     )
 }
 
@@ -836,6 +900,7 @@ pub fn run() {
                 get_session,
                 check_duplicate,
                 save_inspection,
+                save_hardware_inventory,
                 get_dashboard,
                 get_upload_queue,
                 get_sync_status,

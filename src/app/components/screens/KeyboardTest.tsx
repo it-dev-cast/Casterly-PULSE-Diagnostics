@@ -157,7 +157,7 @@ export function KeyboardTest({ onNext }: KeyboardTestProps) {
         <div className="space-y-1.5">
           {KEY_LAYOUT.map((row, rowIdx) => (
             <div key={rowIdx} className="flex gap-1">
-              {row.map((key) => {
+              {row.map((key, colIdx) => {
                 if (!key) return null;
                 const isPressed = pressed.has(key);
                 const isFailed = failed.has(key);
@@ -177,7 +177,7 @@ export function KeyboardTest({ onNext }: KeyboardTestProps) {
 
                 return (
                   <button
-                    key={key}
+                    key={`${rowIdx}-${colIdx}`}
                     onClick={() => toggleFailed(key)}
                     className={`
                       h-10 rounded text-[10px] border transition-all select-none flex items-center justify-center

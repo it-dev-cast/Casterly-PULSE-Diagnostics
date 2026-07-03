@@ -16,20 +16,29 @@ pub struct SaveResult {
 /// (PRD §11.6) into the `inspections` table and enqueue it for upload.
 ///
 /// The frontend supplies `json_data` containing battery_health, grading, the
-/// functional tests, and the full inventory. This function generates the UUID
-/// and timestamp, injects the record-level fields (uuid, usb_id, inspector,
-/// lot_name, timestamp, uploaded) into the JSON, stores it, and adds a PENDING
-/// row to upload_queue. Returns the new inspection UUID.
+/// functional tests, and the full inventory. This function injects the
+/// record-level fields (uuid, usb_id, inspector, lot_name, timestamp,
+/// uploaded) into the JSON, stores it, and adds a PENDING row to
+/// upload_queue. Returns the inspection UUID.
+///
+/// `existing_uuid`: if the frontend already generated a UUID earlier in the
+/// flow (at Hardware Inventory, so the per-category report tables and this
+/// final record share the same identifier), pass it here so it is reused
+/// instead of minting a new one.
 pub fn save_inspection(
     conn: &Connection,
     usb_id: &str,
     inspector: &str,
     lot_name: &str,
     json_data: &str,
+    existing_uuid: Option<&str>,
 )
 -> Result<SaveResult, String>
 {
-    let uuid = Uuid::new_v4().to_string();
+    let uuid = match existing_uuid {
+        Some(u) if !u.is_empty() => u.to_string(),
+        _ => Uuid::new_v4().to_string(),
+    };
     let timestamp = Local::now()
         .format("%d/%m/%Y %H:%M:%S")
         .to_string();

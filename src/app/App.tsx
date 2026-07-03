@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Header } from "./components/Header";
+import { Footer } from "./components/Footer";
 import {
   WorkflowSidebar,
   defaultStages,
@@ -241,6 +242,7 @@ export default function App() {
         lotName: info.lotName,
         inspector: info.inspector,
         jsonData: info.jsonData,
+        uuid: data.uuid,
       },
     );
     const grade = computeGrade();
@@ -400,6 +402,7 @@ export default function App() {
         lotName,
         inspector,
         jsonData: buildInspectionPayload(),
+        uuid: data.uuid,
       });
       setCurrentScreen("startup-home");
     } catch (err) {
@@ -646,37 +649,37 @@ export default function App() {
       case "manual-grading":
         return (
           <ManualGrading
-            onNext={() => advanceStage("manual-grading")}
+            onNext={() => advanceStageAndView("manual-grading")}
           />
         );
       case "speaker-test":
         return (
           <SpeakerTest
-            onNext={() => advanceStage("speaker-test")}
+            onNext={() => advanceStageAndView("speaker-test")}
           />
         );
       case "webcam-test":
         return (
           <WebcamTest
-            onNext={() => advanceStage("webcam-test")}
+            onNext={() => advanceStageAndView("webcam-test")}
           />
         );
       case "keyboard-test":
         return (
           <KeyboardTest
-            onNext={() => advanceStage("keyboard-test")}
+            onNext={() => advanceStageAndView("keyboard-test")}
           />
         );
       case "touchpad-test":
         return (
           <TouchpadTest
-            onNext={() => advanceStage("touchpad-test")}
+            onNext={() => advanceStageAndView("touchpad-test")}
           />
         );
       case "battery-assessment":
         return (
           <BatteryAssessment
-            onNext={() => advanceStage("battery-assessment")}
+            onNext={() => advanceStageAndView("battery-assessment")}
           />
         );
       case "final-review":
@@ -759,7 +762,7 @@ export default function App() {
 
       {/* Main content with responsive padding */}
       <main
-        className={`pt-16 pl-64 min-h-screen transition-all duration-300 ${
+        className={`pt-16 pl-64 pb-8 min-h-screen transition-all duration-300 ${
           layoutMode === "compact"
             ? "pr-0"
             : layoutMode === "standard"
@@ -771,6 +774,8 @@ export default function App() {
       >
         <div className="p-6">{renderScreen()}</div>
       </main>
+
+      <Footer />
 
       {/* Summary Panel with responsive behavior */}
       {showInWorkflow && layoutMode === "full" && (
@@ -789,7 +794,7 @@ export default function App() {
       {/* Standard mode - Collapsible panel */}
       {showInWorkflow && layoutMode === "standard" && (
         <div
-          className={`fixed right-0 top-16 bottom-0 bg-white border-l border-slate-200 z-40 transition-all duration-300 ${
+          className={`fixed right-0 top-16 bottom-8 bg-white border-l border-slate-200 z-40 transition-all duration-300 ${
             rightPanelCollapsed ? "w-10" : "w-[280px]"
           }`}
         >

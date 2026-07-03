@@ -306,7 +306,7 @@ export function TouchpadTest({ onNext }: TouchpadTestProps) {
           disabled={!result}
           className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white text-sm px-5 py-2.5 rounded-lg transition-colors"
         >
-          Continue to Final Review
+          Continue to Battery Assessment
           <ChevronRight size={15} />
         </button>
       </div>

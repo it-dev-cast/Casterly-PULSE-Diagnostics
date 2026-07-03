@@ -52,7 +52,7 @@ export function WorkflowSidebar({
   onNavigate,
 }: WorkflowSidebarProps) {
   return (
-    <aside className="fixed left-0 top-16 bottom-0 w-64 bg-[#0B2545] border-r border-[#123a63] flex flex-col overflow-hidden z-40">
+    <aside className="fixed left-0 top-16 bottom-8 w-64 bg-[#0B2545] border-r border-[#123a63] flex flex-col overflow-hidden z-40">
       {/* Navigation links */}
       <div className="border-b border-[#123a63]">
         <button

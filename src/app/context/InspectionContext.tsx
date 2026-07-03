@@ -39,6 +39,12 @@ export interface BatteryAssessmentData {
 }
 
 export interface InspectionData {
+  // Inspection run identifier. Generated client-side once Hardware
+  // Inventory hands off to Manual Grading (see HardwareInventory.tsx), so
+  // the per-category report tables and the final `inspections` row (Save
+  // Inspection) share the same UUID. Null until that point.
+  uuid: string | null;
+
   // Hardware inventory
   systemInfo: any;
   cpuInfo: any;
@@ -108,6 +114,7 @@ export function InspectionProvider({
 }) {
   const [data, setData] =
     useState<InspectionData>({
+      uuid: null,
       systemInfo: null,
       cpuInfo: null,
       memoryInfo: null,
@@ -143,6 +150,7 @@ export function InspectionProvider({
 
   const resetInspection = () =>
     setData({
+      uuid: null,
       systemInfo: null,
       cpuInfo: null,
       memoryInfo: null,

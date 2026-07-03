@@ -37,15 +37,38 @@ export function SyncStatus() {
     load();
   }, [load]);
 
+  // "Sync Now" should behave like Upload Queue's "Retry All Failed" button:
+  // reset any FAILED rows back to PENDING first, then sync everything
+  // pending. Previously this called "sync_now" directly, which only ever
+  // picked up rows already PENDING -- so if the only outstanding item had
+  // status FAILED, this button would report "Nothing to sync" even though
+  // there was clearly a failed upload sitting right there.
   const handleSyncNow = async () => {
     setSyncing(true);
     try {
-      const r = await invoke<{ message: string }>("sync_now");
+      const r = await invoke<{ message: string }>("retry_all_failed");
       await load();
       alert(`Sync: ${r.message}`);
     } catch (err) {
       console.error("Sync failed:", err);
       alert(`Sync failed: ${err}`);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  // Resets FAILED queue rows back to PENDING, then syncs. Kept as a
+  // dedicated command for the "Retry Failed Uploads" button (disabled when
+  // there are no failed items).
+  const handleRetryFailed = async () => {
+    setSyncing(true);
+    try {
+      const r = await invoke<{ message: string }>("retry_all_failed");
+      await load();
+      alert(`Retry: ${r.message}`);
+    } catch (err) {
+      console.error("Retry failed:", err);
+      alert(`Retry failed: ${err}`);
     } finally {
       setSyncing(false);
     }
@@ -89,8 +112,8 @@ export function SyncStatus() {
             {syncing ? "Syncing…" : "Sync Now"}
           </button>
           <button
-            onClick={handleSyncNow}
-            disabled={syncing}
+            onClick={handleRetryFailed}
+            disabled={syncing || failedCount === 0}
             className="flex items-center gap-2 bg-slate-600 hover:bg-slate-500 text-white text-sm px-3 py-2 rounded-lg transition-colors disabled:opacity-50"
           >
             <RefreshCw size={16} />

@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "udiag4",
+  "productName": "PULSE",
   "version": "0.1.0",
   "identifier": "com.ravi.udiag4",
   "build": {
