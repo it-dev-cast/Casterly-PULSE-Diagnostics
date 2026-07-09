@@ -9,7 +9,7 @@ pub fn pending_count(
 
         "
         SELECT COUNT(*)
-        FROM inspections
+        FROM tbl_pulse_inspections
         WHERE uploaded = 0
         ",
 

@@ -27,7 +27,7 @@ pub fn show_report(
 
             "
             SELECT json_data
-            FROM inspections
+            FROM tbl_pulse_inspections
             "
 
         )

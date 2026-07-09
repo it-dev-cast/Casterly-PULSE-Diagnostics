@@ -11,6 +11,10 @@ mod inspector;
 mod dashboard;
 mod sudo;
 mod audio;
+mod wifi;
+mod power;
+
+use crate::wifi::{WifiNetwork, WifiStatus};
 
 use crate::models::device::{
     SystemInfo,
@@ -115,6 +119,49 @@ fn get_network_info() -> Result<Option<NetworkInfo>, String> {
     );
 
     Ok(network)
+}
+
+#[tauri::command]
+async fn scan_wifi_networks() -> Result<Vec<WifiNetwork>, String> {
+    tokio::task::spawn_blocking(wifi::scan)
+        .await
+        .map_err(|e| format!("Wifi scan task failed: {}", e))
+        .and_then(|inner| inner.map_err(|e| e.to_string()))
+}
+
+#[tauri::command]
+async fn connect_wifi_network(
+    ssid: String,
+    password: Option<String>,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || wifi::connect(&ssid, password.as_deref()))
+        .await
+        .map_err(|e| format!("Wifi connect task failed: {}", e))
+        .and_then(|inner| inner.map_err(|e| e.to_string()))
+}
+
+#[tauri::command]
+async fn disconnect_wifi_network() -> Result<(), String> {
+    tokio::task::spawn_blocking(wifi::disconnect)
+        .await
+        .map_err(|e| format!("Wifi disconnect task failed: {}", e))
+        .and_then(|inner| inner.map_err(|e| e.to_string()))
+}
+
+#[tauri::command]
+async fn get_wifi_status() -> Result<WifiStatus, String> {
+    tokio::task::spawn_blocking(wifi::status)
+        .await
+        .map_err(|e| format!("Wifi status task failed: {}", e))
+        .and_then(|inner| inner.map_err(|e| e.to_string()))
+}
+
+#[tauri::command]
+async fn shutdown_system() -> Result<(), String> {
+    tokio::task::spawn_blocking(power::shutdown)
+        .await
+        .map_err(|e| format!("Shutdown task failed: {}", e))
+        .and_then(|inner| inner.map_err(|e| e.to_string()))
 }
 
 #[tauri::command]
@@ -225,12 +272,20 @@ fn create_lot(
         .lock()
         .map_err(|e| format!("db lock poisoned: {}", e))?;
 
-    lot::repository::insert_lot(
+    let id = lot::repository::insert_lot(
         &conn,
         &lot_name,
         &customer,
         &location,
-    )
+    )?;
+
+    // Best-effort push to Supabase so tbl_pulse_lots isn't only ever
+    // populated locally (see upload/lots.rs).
+    if let Ok(Some(lot)) = lot::repository::get_lot(&conn, id) {
+        upload::lots::push_lot(&conn, &lot);
+    }
+
+    Ok(id)
 }
 
 #[tauri::command]
@@ -262,7 +317,13 @@ fn update_lot(
         &lot_name,
         &customer,
         &location,
-    )
+    )?;
+
+    if let Ok(Some(lot)) = lot::repository::get_lot(&conn, id) {
+        upload::lots::push_lot(&conn, &lot);
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -288,7 +349,13 @@ fn archive_lot(
 
     // PRD LOT statuses are ACTIVE / COMPLETED / CANCELLED; "archive" maps to
     // CANCELLED.
-    lot::repository::set_lot_status(&conn, id, "CANCELLED")
+    lot::repository::set_lot_status(&conn, id, "CANCELLED")?;
+
+    if let Ok(Some(lot)) = lot::repository::get_lot(&conn, id) {
+        upload::lots::push_lot(&conn, &lot);
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -303,13 +370,23 @@ fn create_inspector(
         .lock()
         .map_err(|e| format!("db lock poisoned: {}", e))?;
 
-    inspector::repository::insert_inspector(
+    let id = inspector::repository::insert_inspector(
         &conn,
         &inspector_name,
         &employee_id,
         &email,
         &phone,
-    )
+    )?;
+
+    // Best-effort push to Supabase so tbl_pulse_inspectors isn't only ever
+    // populated locally (see upload/inspectors.rs). The inspector list itself
+    // lives in the local settings table (PRD §11), not a local table, so this
+    // is the only place the remote copy gets created/refreshed.
+    if let Ok(Some(inspector)) = inspector::repository::get_inspector(&conn, id) {
+        upload::inspectors::push_inspector(&conn, &inspector);
+    }
+
+    Ok(id)
 }
 
 #[tauri::command]
@@ -343,7 +420,13 @@ fn update_inspector(
         &employee_id,
         &email,
         &phone,
-    )
+    )?;
+
+    if let Ok(Some(inspector)) = inspector::repository::get_inspector(&conn, id) {
+        upload::inspectors::push_inspector(&conn, &inspector);
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -374,7 +457,13 @@ fn select_lot(
         .lock()
         .map_err(|e| format!("db lock poisoned: {}", e))?;
 
-    lot::repository::select_lot(&conn, id)
+    lot::repository::select_lot(&conn, id)?;
+
+    if let Ok(Some(lot)) = lot::repository::get_lot(&conn, id) {
+        upload::lots::push_lot(&conn, &lot);
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -434,6 +523,7 @@ fn save_inspection(
     state: tauri::State<'_, Mutex<rusqlite::Connection>>,
     lot_name: String,
     inspector: String,
+    cly_no: String,
     json_data: String,
     uuid: Option<String>,
 ) -> Result<inspection::persist::SaveResult, String> {
@@ -446,6 +536,7 @@ fn save_inspection(
     inspection::persist::save_inspection(
         &conn,
         &usb_id,
+        &cly_no,
         &inspector,
         &lot_name,
         &json_data,
@@ -534,6 +625,13 @@ fn sync_now(
     state: tauri::State<'_, Mutex<rusqlite::Connection>>,
 ) -> Result<upload::sync::SyncSummary, String> {
     let conn = state.lock().map_err(|e| format!("db lock poisoned: {}", e))?;
+
+    // Best-effort catch-up push for LOTs and inspectors created before their
+    // Supabase sync existed (or whose earlier push failed). Fire-and-forget,
+    // same as the per-save pushes in lot/inspector command handlers.
+    upload::lots::sync_all_lots(&conn);
+    upload::inspectors::sync_all_inspectors(&conn);
+
     upload::sync::sync_pending(&conn)
 }
 
@@ -545,7 +643,7 @@ fn get_inspection_detail(
 ) -> Result<String, String> {
     let conn = state.lock().map_err(|e| format!("db lock poisoned: {}", e))?;
     conn.query_row(
-        "SELECT json_data FROM inspections WHERE uuid = ?1",
+        "SELECT json_data FROM tbl_pulse_inspections WHERE uuid = ?1",
         rusqlite::params![uuid],
         |row| row.get::<_, String>(0),
     )
@@ -575,7 +673,7 @@ async fn export_inspection(
     let json: String = {
         let conn = state.lock().map_err(|e| format!("db lock poisoned: {}", e))?;
         conn.query_row(
-            "SELECT json_data FROM inspections WHERE uuid = ?1",
+            "SELECT json_data FROM tbl_pulse_inspections WHERE uuid = ?1",
             rusqlite::params![uuid],
             |row| row.get::<_, String>(0),
         )
@@ -629,6 +727,16 @@ async fn export_inspection(
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ExportFilesResult {
+    // json_saved / pdf_saved are tracked separately (rather than a single
+    // combined `local_saved` flag) because the two writes can fail
+    // independently — e.g. a large PDF write can fail on a slow/near-full
+    // USB drive while the tiny JSON write next to it succeeds. Collapsing
+    // them into one boolean previously let a PDF write failure go silently
+    // unreported whenever the JSON write (or the Supabase upload, which
+    // uploads from memory and doesn't depend on the local file at all)
+    // happened to succeed.
+    json_saved: bool,
+    pdf_saved: bool,
     local_saved: bool,
     local_json_path: Option<String>,
     local_pdf_path: Option<String>,
@@ -647,14 +755,27 @@ async fn export_inspection_files(
     state: tauri::State<'_, Mutex<rusqlite::Connection>>,
     uuid: String,
     pdf_base64: String,
+    file_base_name: Option<String>,
 ) -> Result<ExportFilesResult, String> {
     use base64::{engine::general_purpose::STANDARD, Engine as _};
+
+    // The frontend computes the "serialnumber-lotno--dd-mm-yy-HH-MM-SS" base
+    // name (see src/app/lib/pdf.ts's buildExportFilename) so the JSON and PDF
+    // saved here — both locally and in Supabase Storage — share that exact
+    // name. Fall back to the uuid if it wasn't supplied, and sanitize either
+    // way since this is used directly in a filesystem path.
+    let base_name: String = file_base_name
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| uuid.clone())
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .collect();
 
     let (json_data, base_url, key): (String, String, String) = {
         let conn = state.lock().map_err(|e| format!("db lock poisoned: {}", e))?;
         let json_data: String = conn
             .query_row(
-                "SELECT json_data FROM inspections WHERE uuid = ?1",
+                "SELECT json_data FROM tbl_pulse_inspections WHERE uuid = ?1",
                 rusqlite::params![uuid],
                 |row| row.get::<_, String>(0),
             )
@@ -671,38 +792,132 @@ async fn export_inspection_files(
     // Write local copies to an "exports" folder next to udiag.db — since that
     // database is opened with a relative path, this folder lands on the same
     // USB/pendrive the app is running from.
+    //
+    // json_saved / pdf_saved / their paths / their errors are tracked
+    // independently: each std::fs::write is attempted and its own
+    // success/failure recorded, instead of collapsing both into one
+    // pass/fail flag. That way a PDF-specific failure (e.g. a large write
+    // choking on a near-full or slow pendrive) is never hidden behind the
+    // small JSON write succeeding.
     let export_dir = std::path::Path::new("exports");
-    let (local_saved, local_json_path, local_pdf_path, mut error) =
+    // On Unix (this app's target runtime), a permission-denied write into an
+    // *existing* "exports" folder almost always means the folder was created
+    // by a different user/owner than the one this process runs as (e.g. it
+    // was baked into the pendrive image as root during setup, but the kiosk
+    // app itself runs as a regular user afterward). create_dir_all() treats
+    // "the directory already exists" as success, so that mismatch is
+    // otherwise invisible until the write itself fails. Best-effort loosen
+    // the directory's permissions right after create/find so a stale
+    // restrictive mode doesn't silently eat every export; this is a no-op
+    // (and safely ignored) if the current process isn't the owner and isn't
+    // root, in which case the write below will still fail and report why.
+    #[cfg(unix)]
+    fn ensure_export_dir_writable(dir: &std::path::Path) {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(meta) = std::fs::metadata(dir) {
+            let mut perms = meta.permissions();
+            if perms.mode() & 0o200 == 0 {
+                perms.set_mode(0o777);
+                let _ = std::fs::set_permissions(dir, perms);
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    fn ensure_export_dir_writable(_dir: &std::path::Path) {}
+
+    fn is_permission_denied(r: &std::io::Result<()>) -> bool {
+        matches!(r, Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied)
+    }
+
+    let (json_saved, pdf_saved, local_json_path, local_pdf_path, mut error) =
         match std::fs::create_dir_all(export_dir) {
             Ok(()) => {
-                let json_path = export_dir.join(format!("{}.json", uuid));
-                let pdf_path = export_dir.join(format!("{}.pdf", uuid));
-                let json_write = std::fs::write(&json_path, &json_data);
-                let pdf_write = std::fs::write(&pdf_path, &pdf_bytes);
-                if json_write.is_ok() && pdf_write.is_ok() {
-                    (
-                        true,
-                        Some(json_path.display().to_string()),
-                        Some(pdf_path.display().to_string()),
-                        None,
-                    )
-                } else {
-                    let msg = json_write
-                        .err()
-                        .or(pdf_write.err())
-                        .map(|e| e.to_string());
-                    (false, None, None, msg)
+                ensure_export_dir_writable(export_dir);
+
+                let json_path = export_dir.join(format!("{}.json", base_name));
+                let pdf_path = export_dir.join(format!("{}.pdf", base_name));
+
+                let mut json_write = std::fs::write(&json_path, &json_data);
+                let mut pdf_write = std::fs::write(&pdf_path, &pdf_bytes);
+
+                // A permission-denied write is worth exactly one retry after
+                // the chmod attempt above -- anything else (disk full, path
+                // too long, etc.) wouldn't be fixed by retrying so it's left
+                // to fail and report immediately.
+                if is_permission_denied(&json_write) {
+                    ensure_export_dir_writable(export_dir);
+                    json_write = std::fs::write(&json_path, &json_data);
                 }
+                if is_permission_denied(&pdf_write) {
+                    ensure_export_dir_writable(export_dir);
+                    pdf_write = std::fs::write(&pdf_path, &pdf_bytes);
+                }
+
+                if let Err(e) = &json_write {
+                    eprintln!(
+                        "Local JSON export failed ({}): {}",
+                        json_path.display(),
+                        e
+                    );
+                }
+                if let Err(e) = &pdf_write {
+                    eprintln!(
+                        "Local PDF export failed ({}, {} bytes): {}",
+                        pdf_path.display(),
+                        pdf_bytes.len(),
+                        e
+                    );
+                }
+
+                let json_ok = json_write.is_ok();
+                let pdf_ok = pdf_write.is_ok();
+                let msg = pdf_write
+                    .err()
+                    .map(|e| {
+                        let hint = if e.kind() == std::io::ErrorKind::PermissionDenied {
+                            " -- the exports folder likely has the wrong owner/permissions on this pendrive; delete it and let PULSE recreate it, or fix its permissions."
+                        } else {
+                            ""
+                        };
+                        format!("PDF export failed ({}): {}{}", pdf_path.display(), e, hint)
+                    })
+                    .or_else(|| {
+                        json_write
+                            .err()
+                            .map(|e| format!("JSON export failed ({}): {}", json_path.display(), e))
+                    });
+
+                (
+                    json_ok,
+                    pdf_ok,
+                    json_ok.then(|| json_path.display().to_string()),
+                    pdf_ok.then(|| pdf_path.display().to_string()),
+                    msg,
+                )
             }
-            Err(e) => (false, None, None, Some(e.to_string())),
+            Err(e) => {
+                eprintln!(
+                    "Failed to create export dir ({}): {}",
+                    export_dir.display(),
+                    e
+                );
+                (
+                    false,
+                    false,
+                    None,
+                    None,
+                    Some(format!("Could not create exports folder: {}", e)),
+                )
+            }
         };
+    let local_saved = json_saved && pdf_saved;
 
     let cloud_uploaded = if base_url.trim().is_empty() || key.trim().is_empty() {
         false
     } else {
         let base = base_url.clone();
         let api_key = key.clone();
-        let uuid_c = uuid.clone();
+        let base_name_c = base_name.clone();
         let json_bytes = json_data.clone().into_bytes();
         let pdf_bytes_c = pdf_bytes.clone();
 
@@ -716,7 +931,7 @@ async fn export_inspection_files(
                 &base,
                 &api_key,
                 "PULSE",
-                &format!("{}.json", uuid_c),
+                &format!("{}.json", base_name_c),
                 "application/json",
                 &json_bytes,
             )?;
@@ -725,7 +940,7 @@ async fn export_inspection_files(
                 &base,
                 &api_key,
                 "PULSE",
-                &format!("{}.pdf", uuid_c),
+                &format!("{}.pdf", base_name_c),
                 "application/pdf",
                 &pdf_bytes_c,
             )?;
@@ -747,12 +962,85 @@ async fn export_inspection_files(
     };
 
     Ok(ExportFilesResult {
+        json_saved,
+        pdf_saved,
         local_saved,
         local_json_path,
         local_pdf_path,
         cloud_uploaded,
         error,
     })
+}
+
+/// User-triggered report export (Final Review "Export PDF" / "Download
+/// Report", Inspection Complete "Download Report", and Inspection Manager
+/// "Export"). Unlike `export_inspection_files` (which silently writes into
+/// this USB's own "exports" folder right after a save), this opens a native
+/// "choose a folder" dialog so the user can pick any destination, then
+/// writes `<file_base_name>.pdf` (and `<file_base_name>.xlsx`, when the
+/// caller also supplies an Excel workbook) into that folder in one go.
+///
+/// Must be `async` + run the dialog on a spawned blocking thread for the
+/// same reason as `export_inspection` above (blocking_* dialog helpers
+/// deadlock the main/IPC thread if called synchronously).
+#[tauri::command]
+async fn export_report_files(
+    app: tauri::AppHandle,
+    pdf_base64: String,
+    xlsx_base64: Option<String>,
+    file_base_name: String,
+) -> Result<Option<String>, String> {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    use tauri_plugin_dialog::DialogExt;
+
+    let pdf_bytes = STANDARD
+        .decode(pdf_base64.as_bytes())
+        .map_err(|e| format!("invalid PDF data: {}", e))?;
+    let xlsx_bytes = match &xlsx_base64 {
+        Some(b) => Some(
+            STANDARD
+                .decode(b.as_bytes())
+                .map_err(|e| format!("invalid XLSX data: {}", e))?,
+        ),
+        None => None,
+    };
+
+    let safe_name: String = file_base_name
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .collect();
+    let safe_name = if safe_name.trim().is_empty() {
+        "report".to_string()
+    } else {
+        safe_name
+    };
+
+    tokio::task::spawn_blocking(move || {
+        let chosen = app
+            .dialog()
+            .file()
+            .set_title("Choose export folder")
+            .blocking_pick_folder();
+
+        let folder = match chosen {
+            Some(f) => f,
+            None => return Ok(None), // user cancelled
+        };
+
+        let dir = folder.into_path().map_err(|e| e.to_string())?;
+
+        let pdf_path = dir.join(format!("{}.pdf", safe_name));
+        std::fs::write(&pdf_path, &pdf_bytes).map_err(|e| e.to_string())?;
+
+        if let Some(bytes) = xlsx_bytes {
+            let xlsx_path = dir.join(format!("{}.xlsx", safe_name));
+            std::fs::write(&xlsx_path, &bytes).map_err(|e| e.to_string())?;
+        }
+
+        Ok(Some(dir.display().to_string()))
+    })
+    .await
+    .map_err(|e| format!("export task failed: {}", e))?
 }
 
 /// Delete an inspection and its upload-queue row.
@@ -763,12 +1051,12 @@ fn delete_inspection(
 ) -> Result<(), String> {
     let conn = state.lock().map_err(|e| format!("db lock poisoned: {}", e))?;
     conn.execute(
-        "DELETE FROM upload_queue WHERE inspection_uuid = ?1",
+        "DELETE FROM tbl_pulse_upload_queue WHERE inspection_uuid = ?1",
         rusqlite::params![uuid],
     )
     .map_err(|e| e.to_string())?;
     conn.execute(
-        "DELETE FROM inspections WHERE uuid = ?1",
+        "DELETE FROM tbl_pulse_inspections WHERE uuid = ?1",
         rusqlite::params![uuid],
     )
     .map_err(|e| e.to_string())?;
@@ -783,7 +1071,7 @@ fn delete_queue_item(
 ) -> Result<(), String> {
     let conn = state.lock().map_err(|e| format!("db lock poisoned: {}", e))?;
     conn.execute(
-        "DELETE FROM upload_queue WHERE id = ?1",
+        "DELETE FROM tbl_pulse_upload_queue WHERE id = ?1",
         rusqlite::params![id],
     )
     .map_err(|e| e.to_string())?;
@@ -798,7 +1086,7 @@ fn retry_upload(
 ) -> Result<upload::sync::SyncSummary, String> {
     let conn = state.lock().map_err(|e| format!("db lock poisoned: {}", e))?;
     conn.execute(
-        "UPDATE upload_queue SET status='PENDING' WHERE id = ?1",
+        "UPDATE tbl_pulse_upload_queue SET status='PENDING' WHERE id = ?1",
         rusqlite::params![id],
     )
     .map_err(|e| e.to_string())?;
@@ -812,7 +1100,7 @@ fn retry_all_failed(
 ) -> Result<upload::sync::SyncSummary, String> {
     let conn = state.lock().map_err(|e| format!("db lock poisoned: {}", e))?;
     conn.execute(
-        "UPDATE upload_queue SET status='PENDING' WHERE status='FAILED'",
+        "UPDATE tbl_pulse_upload_queue SET status='PENDING' WHERE status='FAILED'",
         [],
     )
     .map_err(|e| e.to_string())?;
@@ -825,7 +1113,7 @@ fn delete_uploaded(
     state: tauri::State<'_, Mutex<rusqlite::Connection>>,
 ) -> Result<(), String> {
     let conn = state.lock().map_err(|e| format!("db lock poisoned: {}", e))?;
-    conn.execute("DELETE FROM upload_queue WHERE status='UPLOADED'", [])
+    conn.execute("DELETE FROM tbl_pulse_upload_queue WHERE status='UPLOADED'", [])
         .map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -882,6 +1170,11 @@ pub fn run() {
                 get_gpu_info,
                 get_display_info,
                 get_network_info,
+                scan_wifi_networks,
+                connect_wifi_network,
+                disconnect_wifi_network,
+                get_wifi_status,
+                shutdown_system,
                 get_camera_info,
                 get_audio_info,
                 play_speaker_test,
@@ -909,6 +1202,7 @@ pub fn run() {
                 get_inspection_detail,
                 export_inspection,
                 export_inspection_files,
+                export_report_files,
                 delete_inspection,
                 delete_queue_item,
                 retry_upload,

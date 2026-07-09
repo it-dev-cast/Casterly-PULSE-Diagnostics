@@ -34,10 +34,77 @@ pub fn initialize_database()
         );
     }
 
+    // ── One-time migration: tbl_pulse_ table prefix ───────────────────────
+    // Every PULSE table (locally and in the shared Supabase project) is
+    // prefixed tbl_pulse_ so it's unambiguous which tables belong to this
+    // app in a database shared with other projects. On a device that already
+    // has an existing udiag.db (old, unprefixed table names), rename each
+    // table in place so its data carries over; on a brand-new install none
+    // of these tables exist yet, so each RENAME simply errors and is
+    // ignored, and the CREATE TABLE IF NOT EXISTS statements below create
+    // the tables fresh under their new names.
+    if schema_version < 2 {
+        let renames = [
+            ("lots", "tbl_pulse_lots"),
+            ("inspections", "tbl_pulse_inspections"),
+            ("upload_queue", "tbl_pulse_upload_queue"),
+            ("settings", "tbl_pulse_settings"),
+            ("system_info", "tbl_pulse_system_info"),
+            ("cpu_info", "tbl_pulse_cpu_info"),
+            ("memory_info", "tbl_pulse_memory_info"),
+            ("storage_info", "tbl_pulse_storage_info"),
+            ("battery_info", "tbl_pulse_battery_info"),
+            ("network_info", "tbl_pulse_network_info"),
+            ("display_info", "tbl_pulse_display_info"),
+            ("gpu_info", "tbl_pulse_gpu_info"),
+            ("camera_info", "tbl_pulse_camera_info"),
+            ("audio_info", "tbl_pulse_audio_info"),
+        ];
+        for (old_name, new_name) in renames {
+            let _ = conn.execute(
+                &format!("ALTER TABLE {} RENAME TO {}", old_name, new_name),
+                [],
+            );
+        }
+        let _ = conn.execute("PRAGMA user_version = 2", []);
+    }
+
+    // ── One-time migration: cly_no column ─────────────────────────────────
+    // Adds the mandatory CLY Number (e.g. "CLY-1234") entered by the user at
+    // the start of every inspection. On an existing database this column
+    // doesn't exist yet, so ALTER TABLE adds it (defaulting existing rows to
+    // an empty string); on a brand-new install the CREATE TABLE IF NOT
+    // EXISTS statement below already includes it, so this ALTER TABLE simply
+    // errors (column already exists) and is ignored.
+    if schema_version < 3 {
+        let _ = conn.execute(
+            "ALTER TABLE tbl_pulse_inspections ADD COLUMN cly_no TEXT NOT NULL DEFAULT ''",
+            [],
+        );
+        let _ = conn.execute("PRAGMA user_version = 3", []);
+    }
+
+    // ── One-time migration: grade column ──────────────────────────────────
+    // The overall refurb grade (A/B/C) was previously only implied by the
+    // per-component statuses buried in json_data and was never written
+    // anywhere as a real column, so it always showed up blank in reports and
+    // in the synced Supabase row. On an existing database this ALTER TABLE
+    // adds the column (defaulting existing rows to ''); on a brand-new
+    // install the CREATE TABLE IF NOT EXISTS statement below already
+    // includes it, so this ALTER TABLE simply errors (column already
+    // exists) and is ignored.
+    if schema_version < 4 {
+        let _ = conn.execute(
+            "ALTER TABLE tbl_pulse_inspections ADD COLUMN grade TEXT NOT NULL DEFAULT ''",
+            [],
+        );
+        let _ = conn.execute("PRAGMA user_version = 4", []);
+    }
+
     conn.execute(
 
         "
-        CREATE TABLE IF NOT EXISTS lots (
+        CREATE TABLE IF NOT EXISTS tbl_pulse_lots (
 
             id INTEGER PRIMARY KEY,
 
@@ -59,11 +126,13 @@ pub fn initialize_database()
     conn.execute(
 
         "
-        CREATE TABLE IF NOT EXISTS inspections (
+        CREATE TABLE IF NOT EXISTS tbl_pulse_inspections (
 
             id INTEGER PRIMARY KEY,
 
             uuid TEXT NOT NULL,
+
+            cly_no TEXT NOT NULL DEFAULT '',
 
             lot_name TEXT NOT NULL,
 
@@ -73,7 +142,9 @@ pub fn initialize_database()
 
             uploaded INTEGER DEFAULT 0,
 
-            json_data TEXT NOT NULL
+            json_data TEXT NOT NULL,
+
+            grade TEXT NOT NULL DEFAULT ''
         )
         ",
 
@@ -84,7 +155,7 @@ pub fn initialize_database()
     conn.execute(
 
        "
-       CREATE TABLE IF NOT EXISTS upload_queue
+       CREATE TABLE IF NOT EXISTS tbl_pulse_upload_queue
        (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
 
@@ -122,7 +193,7 @@ pub fn initialize_database()
 
     conn.execute(
         "
-        CREATE TABLE IF NOT EXISTS system_info (
+        CREATE TABLE IF NOT EXISTS tbl_pulse_system_info (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             uuid TEXT NOT NULL,
             serial_number TEXT NOT NULL,
@@ -140,7 +211,7 @@ pub fn initialize_database()
 
     conn.execute(
         "
-        CREATE TABLE IF NOT EXISTS cpu_info (
+        CREATE TABLE IF NOT EXISTS tbl_pulse_cpu_info (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             uuid TEXT NOT NULL,
             serial_number TEXT NOT NULL,
@@ -167,7 +238,7 @@ pub fn initialize_database()
 
     conn.execute(
         "
-        CREATE TABLE IF NOT EXISTS memory_info (
+        CREATE TABLE IF NOT EXISTS tbl_pulse_memory_info (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             uuid TEXT NOT NULL,
             serial_number TEXT NOT NULL,
@@ -191,7 +262,7 @@ pub fn initialize_database()
 
     conn.execute(
         "
-        CREATE TABLE IF NOT EXISTS storage_info (
+        CREATE TABLE IF NOT EXISTS tbl_pulse_storage_info (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             uuid TEXT NOT NULL,
             serial_number TEXT NOT NULL,
@@ -219,7 +290,7 @@ pub fn initialize_database()
 
     conn.execute(
         "
-        CREATE TABLE IF NOT EXISTS battery_info (
+        CREATE TABLE IF NOT EXISTS tbl_pulse_battery_info (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             uuid TEXT NOT NULL,
             serial_number TEXT NOT NULL,
@@ -243,7 +314,7 @@ pub fn initialize_database()
 
     conn.execute(
         "
-        CREATE TABLE IF NOT EXISTS network_info (
+        CREATE TABLE IF NOT EXISTS tbl_pulse_network_info (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             uuid TEXT NOT NULL,
             serial_number TEXT NOT NULL,
@@ -263,7 +334,7 @@ pub fn initialize_database()
 
     conn.execute(
         "
-        CREATE TABLE IF NOT EXISTS display_info (
+        CREATE TABLE IF NOT EXISTS tbl_pulse_display_info (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             uuid TEXT NOT NULL,
             serial_number TEXT NOT NULL,
@@ -281,7 +352,7 @@ pub fn initialize_database()
 
     conn.execute(
         "
-        CREATE TABLE IF NOT EXISTS gpu_info (
+        CREATE TABLE IF NOT EXISTS tbl_pulse_gpu_info (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             uuid TEXT NOT NULL,
             serial_number TEXT NOT NULL,
@@ -301,7 +372,7 @@ pub fn initialize_database()
 
     conn.execute(
         "
-        CREATE TABLE IF NOT EXISTS camera_info (
+        CREATE TABLE IF NOT EXISTS tbl_pulse_camera_info (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             uuid TEXT NOT NULL,
             serial_number TEXT NOT NULL,
@@ -318,7 +389,7 @@ pub fn initialize_database()
 
     conn.execute(
         "
-        CREATE TABLE IF NOT EXISTS audio_info (
+        CREATE TABLE IF NOT EXISTS tbl_pulse_audio_info (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             uuid TEXT NOT NULL,
             serial_number TEXT NOT NULL,
@@ -337,7 +408,7 @@ pub fn initialize_database()
     conn.execute(
 
     "
-    CREATE TABLE IF NOT EXISTS settings (
+    CREATE TABLE IF NOT EXISTS tbl_pulse_settings (
 
         key TEXT PRIMARY KEY,
 

@@ -140,3 +140,86 @@ alter table public.hardware_specs  enable row level security;
 alter table public.grading_results enable row level security;
 alter table public.test_results    enable row level security;
 alter table public.upload_log      enable row level security;
+
+
+1) Inside the Manual Grading Screen once everything completes and user clicks on "Continue to speaker test" button it should automatically moves to Speaker Test Screen. now manually user as to clicks on the menu
+
+2) Inside the Speaker Test Screen once everything completes and user clicks on "Continue to webcam test" button it should automatically moves to webcam Test Screen. now manually user as to clicks on the menu
+
+3) Inside the webcam Test Screen once everything completes and user clicks on "Continue to keyboard test" button it should automatically moves to keyboard Test Screen. now manually user as to clicks on the menu
+
+4) Inside the keyboard Test Screen once everything completes and user clicks on "Continue to touchpad test" button it should automatically moves to touch Test Screen. now manually user as to clicks on the menu
+
+5) Inside the touch Test Screen once everything completes and user clicks on "Continue to Battery Assessment test" button it should automatically moves to Battery Assessment Test Screen. now manually user as to clicks on the menu
+
+6) Inside the Battery Assessment Test Screen once everything completes and user clicks on "Continue to final review" button it should automatically moves to final review Screen. now manually user as to clicks on the menu
+
+
+"This diagnostic tool performs a read-only assessment of your laptop and does not make any changes to hardware, software, files, or system configurations."
+
+Display the following disclaimer in the application footer as a continuously scrolling marquee from left to right, looping indefinitely throughout the application's runtime.
+
+
+
+develop windows application in vs 2026 c# and give me the full application for download, details are given below.
+
+The below project is related to PULSE Application
+
+1) Screen Name is Casterly Label Printing, in the header casterly image should be there inside the screen with the caption Casterly Label Printing and Reporting.
+2) Label Name = "Service-Tag" with icon on the Label
+3) Text Box for the same and inside this text box auto filling should be there from supabase table (tbl_pulse_inspections), when user types the characters based on that avaialble serial_number should be displayed in the drop down.
+4) Label Name = "LOT-Number" with icon on the Label
+5) Text Box for the same and inside this text box auto filling should be there from supabase table (tbl_pulse_inspections), when user types the characters based on that avaialble lot_name should be displayed in the drop down.
+6) Button Name = "View Label" with icon on the button, if user clicks on this button with live data label priview should be display inside the screen
+7) Button Name = "Print Label" with icon on the button.
+8) After clicking on the button first excel sheet as to be generated in the local system and with same excels sheet print should be come to the default printer which as been set.
+9) Label desgin as been attached its in .yix format which is designed in wagelabel software.
+10) with service tag print only the latest record as to be pick.
+11) with lot-number print all the data related to that should get exported to the excel then print.
+12) Supabase credentials are given below
+DATABASE_URL="postgresql://postgres.pesgdrfeauofhtbjqkbz:Renew2026DB@aws-1-ap-northeast-1.pooler.supabase.com:6543/postgres"
+SUPABASE_URL=https://pesgdrfeauofhtbjqkbz.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlc2dkcmZlYXVvZmh0Ympxa2J6Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NzgwNjg5NywiZXhwIjoyMDkzMzgyODk3fQ.pqikpnfrtSttjAS6Z4A-zyUyzTypveMEllxCuHVjqpE
+
+
+only the below details should be shown in the label
+9DHMSQ3
+B3SLSQ3
+
+Before you answer, tell me what you need to know to answer well, and point out any assumptions you'd otherwise make.
+
+1) Put border line(top, bottom, left, right) for the label, all values should get print inside this line.
+2) Take CLY Number from tbl_pulse_inspections according to the serial_number.
+3) Put this cly number on top of the label, font size should large and bold which should fit accordinglly inside the border line.
+4) Below the Cly number print barcode height and width of the barcode should be matched with cly number, inside barcode cly number should be there means if we scan cly number should get come.
+5) below cly number put vertical line
+6) below barcode put vertical line
+7) below this all other details should get print means manufauturer model etc(retain fontsize and formats)
+8) below this details put vertical line
+9) below this vertical line put caption as MRP Rs 65,000 in bold and bigger font
+
+1) barcode line should not get overlap on left and right line, and reduce height and width of the barcode little bit.
+2) cly number font on the top reduce the font to 25%
+3) reduce MRP details font size to 50%
+4) before cly number print "CASTERLY CERTIFIED REFURBISHED LAPTOP" adjust the font according to the label.
+5) replace MRP details with the below and print the below given details which should get fit in the label so according to that give the font size.
+
+MRP: ₹39,990 (Inclusive of all Taxes)
+Warranty:
+1-Year Nationwide Replacement Warranty
+Packed & Marketed By:
+Casterly Private Limited
+
+Customer Support:
++91 63668 90658
+support@casterly.com
+support.casterly.com
+
+1) Increase the cly number font size to 15pt on the top with bold.
+2) make phone number and website details on the below to bold.
+
+create .env file with below supabse details
+
+DATABASE_URL="postgresql://postgres.pesgdrfeauofhtbjqkbz:Renew2026DB@aws-1-ap-northeast-1.pooler.supabase.com:6543/postgres"
+SUPABASE_URL=https://pesgdrfeauofhtbjqkbz.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlc2dkcmZlYXVvZmh0Ympxa2J6Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NzgwNjg5NywiZXhwIjoyMDkzMzgyODk3fQ.pqikpnfrtSttjAS6Z4A-zyUyzTypveMEllxCuHVjqpE

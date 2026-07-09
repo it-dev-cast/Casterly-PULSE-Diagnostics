@@ -36,7 +36,7 @@ pub fn delete_by_serial(
             SELECT
                 id,
                 json_data
-            FROM inspections
+            FROM tbl_pulse_inspections
             "
 
         )
@@ -140,7 +140,7 @@ pub fn delete_by_serial(
                         conn.execute(
 
                             "
-                            DELETE FROM inspections
+                            DELETE FROM tbl_pulse_inspections
                             WHERE id=?
                             ",
 

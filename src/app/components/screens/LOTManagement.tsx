@@ -22,6 +22,16 @@ interface LOTManagementProps {
   onSelectLOT: (id: string) => void;
 }
 
+const LOT_PREFIX = "LOT-";
+
+/** Extract just the digit characters from a LOT name (used both to render
+ * the editable portion of the input and to check whether at least one digit
+ * has been entered, regardless of whether the stored name already carries
+ * the "LOT-" prefix). */
+function lotDigits(lotName: string): string {
+  return lotName.replace(/[^0-9]/g, "");
+}
+
 export function LOTManagement({ onSelectLOT }: LOTManagementProps) {
   const [lots, setLots] = useState<LOT[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,7 +63,7 @@ export function LOTManagement({ onSelectLOT }: LOTManagementProps) {
   const handleCreateNew = () => {
     setEditingId(null);
     setShowForm(true);
-    setFormData({ lotName: "", customer: "", location: "" });
+    setFormData({ lotName: LOT_PREFIX, customer: "", location: "" });
   };
 
   const handleEdit = (lot: LOT) => {
@@ -69,7 +79,7 @@ export function LOTManagement({ onSelectLOT }: LOTManagementProps) {
   const handleCancel = () => {
     setShowForm(false);
     setEditingId(null);
-    setFormData({ lotName: "", customer: "", location: "" });
+    setFormData({ lotName: LOT_PREFIX, customer: "", location: "" });
   };
 
   const handleSave = async () => {
@@ -93,7 +103,7 @@ export function LOTManagement({ onSelectLOT }: LOTManagementProps) {
       }
       setShowForm(false);
       setEditingId(null);
-      setFormData({ lotName: "", customer: "", location: "" });
+      setFormData({ lotName: LOT_PREFIX, customer: "", location: "" });
       await loadLots();
     } catch (err) {
       console.error("Failed to save LOT:", err);
@@ -133,20 +143,20 @@ export function LOTManagement({ onSelectLOT }: LOTManagementProps) {
     const s = status.toUpperCase();
     if (s === "COMPLETED") {
       return (
-        <span className="text-xs text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded w-fit">
+        <span className="text-xs text-emerald-300 bg-emerald-500/15 px-2 py-0.5 rounded w-fit">
           Completed
         </span>
       );
     }
     if (s === "CANCELLED") {
       return (
-        <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded w-fit">
+        <span className="text-xs text-slate-500 bg-[#16294a] px-2 py-0.5 rounded w-fit">
           Cancelled
         </span>
       );
     }
     return (
-      <span className="flex items-center gap-1 text-xs text-blue-700 bg-blue-100 px-2 py-0.5 rounded w-fit">
+      <span className="flex items-center gap-1 text-xs text-blue-300 bg-blue-500/15 px-2 py-0.5 rounded w-fit">
         <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
         Active
       </span>
@@ -154,19 +164,19 @@ export function LOTManagement({ onSelectLOT }: LOTManagementProps) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="-m-6 p-6 min-h-[calc(100vh-6rem)] bg-[#0a1626] space-y-6">
       <div>
-        <h1 className="text-slate-800">LOT Management</h1>
+        <h1 className="text-slate-100">LOT Management</h1>
         <p className="text-sm text-slate-500 mt-0.5">
           Create and manage refurbishment LOTs
         </p>
       </div>
 
       {/* LOT List */}
-      <div className="bg-white rounded-lg border border-slate-200">
-        <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+      <div className="bg-[#0f1e35] rounded-lg border border-[#1c3f66]">
+        <div className="p-4 border-b border-[#1c3f66] flex items-center justify-between">
           <div>
-            <h3 className="text-slate-700">Recent LOTs</h3>
+            <h3 className="text-slate-200">Recent LOTs</h3>
             <p className="text-xs text-slate-500 mt-0.5">
               {loading ? "Loading…" : `${lots.length} LOTs on this USB`}
             </p>
@@ -183,7 +193,7 @@ export function LOTManagement({ onSelectLOT }: LOTManagementProps) {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-100 bg-slate-50">
+              <tr className="border-b border-[#16294a] bg-[#0d1b30]">
                 <th className="text-left text-xs text-slate-500 px-4 py-3">
                   LOT Name
                 </th>
@@ -209,7 +219,7 @@ export function LOTManagement({ onSelectLOT }: LOTManagementProps) {
                 <tr>
                   <td
                     colSpan={6}
-                    className="px-4 py-8 text-center text-sm text-slate-400"
+                    className="px-4 py-8 text-center text-sm text-slate-500"
                   >
                     No LOTs yet. Click “Create New LOT” to add one.
                   </td>
@@ -218,15 +228,15 @@ export function LOTManagement({ onSelectLOT }: LOTManagementProps) {
               {lots.map((lot) => (
                 <tr
                   key={lot.id}
-                  className="border-b border-slate-50 hover:bg-slate-50 transition-colors"
+                  className="border-b border-[#16294a] hover:bg-[#132445] transition-colors"
                 >
                   <td className="px-4 py-3">
-                    <span className="text-slate-700 font-medium">
+                    <span className="text-slate-200 font-medium">
                       {lot.lotName}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-slate-600">{lot.customer}</td>
-                  <td className="px-4 py-3 text-slate-600">{lot.location}</td>
+                  <td className="px-4 py-3 text-slate-300">{lot.customer}</td>
+                  <td className="px-4 py-3 text-slate-300">{lot.location}</td>
                   <td className="px-4 py-3 text-slate-500">
                     {lot.inspectionDate}
                   </td>
@@ -235,13 +245,13 @@ export function LOTManagement({ onSelectLOT }: LOTManagementProps) {
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => onSelectLOT(String(lot.id))}
-                        className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-600 px-2 py-1 rounded transition-colors"
+                        className="text-xs bg-blue-500/10 hover:bg-blue-500/15 text-blue-400 px-2 py-1 rounded transition-colors"
                       >
                         Select
                       </button>
                       <button
                         onClick={() => handleEdit(lot)}
-                        className="text-xs bg-slate-50 hover:bg-slate-100 text-slate-600 px-2 py-1 rounded transition-colors"
+                        className="text-xs bg-[#0d1b30] hover:bg-[#1c3457] text-slate-300 px-2 py-1 rounded transition-colors"
                       >
                         <Edit2 size={12} className="inline mr-1" />
                         Edit
@@ -249,7 +259,7 @@ export function LOTManagement({ onSelectLOT }: LOTManagementProps) {
                       {lot.status.toUpperCase() !== "CANCELLED" && (
                         <button
                           onClick={() => handleArchive(lot)}
-                          className="text-xs bg-slate-50 hover:bg-slate-100 text-slate-600 px-2 py-1 rounded transition-colors"
+                          className="text-xs bg-[#0d1b30] hover:bg-[#1c3457] text-slate-300 px-2 py-1 rounded transition-colors"
                         >
                           <Archive size={12} className="inline mr-1" />
                           Archive
@@ -257,7 +267,7 @@ export function LOTManagement({ onSelectLOT }: LOTManagementProps) {
                       )}
                       <button
                         onClick={() => handleDelete(lot)}
-                        className="text-xs bg-red-50 hover:bg-red-100 text-red-600 px-2 py-1 rounded transition-colors"
+                        className="text-xs bg-red-500/10 hover:bg-red-500/15 text-red-400 px-2 py-1 rounded transition-colors"
                       >
                         <Trash2 size={12} className="inline mr-1" />
                         Delete
@@ -274,9 +284,9 @@ export function LOTManagement({ onSelectLOT }: LOTManagementProps) {
       {/* New LOT Form Modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
-            <div className="p-4 border-b border-slate-200">
-              <h3 className="text-slate-800">
+          <div className="bg-[#0f1e35] rounded-lg shadow-xl w-full max-w-md mx-4">
+            <div className="p-4 border-b border-[#1c3f66]">
+              <h3 className="text-slate-100">
                 {editingId !== null ? "Edit LOT" : "Create New LOT"}
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
@@ -287,22 +297,30 @@ export function LOTManagement({ onSelectLOT }: LOTManagementProps) {
             </div>
             <div className="p-4 space-y-4">
               <div>
-                <label className="block text-sm text-slate-700 mb-1">
-                  LOT Name <span className="text-red-500">*</span>
+                <label className="block text-sm text-slate-200 mb-1">
+                  LOT Name <span className="text-red-400">*</span>
                 </label>
-                <input
-                  type="text"
-                  value={formData.lotName}
-                  onChange={(e) =>
-                    setFormData({ ...formData, lotName: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="e.g., CLY-004"
-                />
+                <div className="flex items-stretch w-full rounded-lg border border-[#1c3f66] bg-[#0d1b30] focus-within:ring-2 focus-within:ring-blue-500 overflow-hidden">
+                  <span className="px-3 py-2 text-sm text-slate-400 select-none bg-[#132743]">
+                    {LOT_PREFIX}
+                  </span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={lotDigits(formData.lotName)}
+                    onChange={(e) => {
+                      const digits = e.target.value.replace(/[^0-9]/g, "");
+                      setFormData({ ...formData, lotName: `${LOT_PREFIX}${digits}` });
+                    }}
+                    className="flex-1 min-w-0 px-3 py-2 bg-transparent text-slate-100 placeholder:text-slate-500 text-sm focus:outline-none"
+                    placeholder="004"
+                  />
+                </div>
+                <p className="text-xs text-slate-500 mt-1">Digits only (0-9)</p>
               </div>
               <div>
-                <label className="block text-sm text-slate-700 mb-1">
-                  Customer Name <span className="text-red-500">*</span>
+                <label className="block text-sm text-slate-200 mb-1">
+                  Customer Name <span className="text-red-400">*</span>
                 </label>
                 <input
                   type="text"
@@ -310,13 +328,13 @@ export function LOTManagement({ onSelectLOT }: LOTManagementProps) {
                   onChange={(e) =>
                     setFormData({ ...formData, customer: e.target.value })
                   }
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-[#1c3f66] bg-[#0d1b30] text-slate-100 placeholder:text-slate-500 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Enter customer name"
                 />
               </div>
               <div>
-                <label className="block text-sm text-slate-700 mb-1">
-                  Location <span className="text-red-500">*</span>
+                <label className="block text-sm text-slate-200 mb-1">
+                  Location <span className="text-red-400">*</span>
                 </label>
                 <input
                   type="text"
@@ -324,15 +342,15 @@ export function LOTManagement({ onSelectLOT }: LOTManagementProps) {
                   onChange={(e) =>
                     setFormData({ ...formData, location: e.target.value })
                   }
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-[#1c3f66] bg-[#0d1b30] text-slate-100 placeholder:text-slate-500 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="e.g., Warehouse A"
                 />
               </div>
             </div>
-            <div className="p-4 border-t border-slate-200 flex gap-2 justify-end">
+            <div className="p-4 border-t border-[#1c3f66] flex gap-2 justify-end">
               <button
                 onClick={handleCancel}
-                className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                className="px-4 py-2 text-sm text-slate-300 hover:bg-[#1c3457] rounded-lg transition-colors"
               >
                 Cancel
               </button>
@@ -340,7 +358,7 @@ export function LOTManagement({ onSelectLOT }: LOTManagementProps) {
                 onClick={handleSave}
                 disabled={
                   saving ||
-                  !formData.lotName ||
+                  lotDigits(formData.lotName).length === 0 ||
                   !formData.customer ||
                   !formData.location
                 }

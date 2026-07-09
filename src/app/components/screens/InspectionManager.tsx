@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Search, Filter, Eye, Download, Trash2, CheckCircle2, XCircle, Clock, AlertTriangle } from "lucide-react";
+import { exportReportFiles } from "../../lib/exportReport";
 
 type UploadStatus = "uploaded" | "pending" | "failed";
 
@@ -59,10 +60,15 @@ export function InspectionManager() {
     }
   };
 
+  // Exports the full report for this inspection as both a PDF (same styled
+  // layout as everywhere else in the app) and an Excel workbook with the
+  // same content, into a single user-chosen folder.
   const handleExport = async (uuid: string) => {
     try {
-      const path = await invoke<string | null>("export_inspection", { uuid });
-      if (path) alert(`Exported to:\n${path}`);
+      const json = await invoke<string>("get_inspection_detail", { uuid });
+      const run = JSON.parse(json);
+      const folder = await exportReportFiles(run, { includeExcel: true });
+      if (folder) alert(`Report (PDF + Excel) saved to:\n${folder}`);
     } catch (err) {
       alert(`Failed to export record: ${err}`);
     }
@@ -102,21 +108,21 @@ export function InspectionManager() {
     switch (status) {
       case "uploaded":
         return (
-          <span className="flex items-center gap-1 text-xs text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
+          <span className="flex items-center gap-1 text-xs text-emerald-300 bg-emerald-500/15 px-2 py-0.5 rounded">
             <CheckCircle2 size={12} />
             Uploaded
           </span>
         );
       case "pending":
         return (
-          <span className="flex items-center gap-1 text-xs text-orange-700 bg-orange-100 px-2 py-0.5 rounded">
+          <span className="flex items-center gap-1 text-xs text-orange-300 bg-orange-500/15 px-2 py-0.5 rounded">
             <Clock size={12} />
             Pending
           </span>
         );
       case "failed":
         return (
-          <span className="flex items-center gap-1 text-xs text-red-700 bg-red-100 px-2 py-0.5 rounded">
+          <span className="flex items-center gap-1 text-xs text-red-300 bg-red-500/15 px-2 py-0.5 rounded">
             <XCircle size={12} />
             Failed
           </span>
@@ -156,40 +162,40 @@ export function InspectionManager() {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="-m-6 p-6 min-h-[calc(100vh-6rem)] bg-[#0a1626] space-y-6">
       <div>
-        <h1 className="text-slate-800">Inspection Manager</h1>
+        <h1 className="text-slate-100">Inspection Manager</h1>
         <p className="text-sm text-slate-500 mt-0.5">
           Browse and manage locally stored inspections
         </p>
       </div>
 
       {/* Search and Filters */}
-      <div className="bg-white rounded-lg border border-slate-200 p-4">
+      <div className="bg-[#0f1e35] rounded-lg border border-[#1c3f66] p-4">
         <div className="grid grid-cols-2 gap-4 mb-4">
           <div>
             <label className="block text-xs text-slate-500 mb-1">Search</label>
             <div className="relative">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
               <input
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Search by serial, model, inspector, or LOT..."
-                className="w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full pl-10 pr-3 py-2 border border-[#1c3f66] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
           <div>
             <label className="block text-xs text-slate-500 mb-1">Filter By</label>
             <div className="flex items-center gap-1.5">
-              <Filter size={14} className="text-slate-400 ml-1" />
+              <Filter size={14} className="text-slate-500 ml-1" />
               <button
                 onClick={() => setFilterMode("all")}
                 className={`text-xs px-2.5 py-1.5 rounded transition-colors ${
                   filterMode === "all"
                     ? "bg-blue-600 text-white"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    : "bg-[#16294a] text-slate-300 hover:bg-[#22436e]"
                 }`}
               >
                 All
@@ -199,7 +205,7 @@ export function InspectionManager() {
                 className={`text-xs px-2.5 py-1.5 rounded transition-colors ${
                   filterMode === "current-lot"
                     ? "bg-blue-600 text-white"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    : "bg-[#16294a] text-slate-300 hover:bg-[#22436e]"
                 }`}
               >
                 Current LOT
@@ -209,7 +215,7 @@ export function InspectionManager() {
                 className={`text-xs px-2.5 py-1.5 rounded transition-colors ${
                   filterMode === "pending"
                     ? "bg-blue-600 text-white"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    : "bg-[#16294a] text-slate-300 hover:bg-[#22436e]"
                 }`}
               >
                 Pending Upload
@@ -219,7 +225,7 @@ export function InspectionManager() {
                 className={`text-xs px-2.5 py-1.5 rounded transition-colors ${
                   filterMode === "uploaded"
                     ? "bg-blue-600 text-white"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    : "bg-[#16294a] text-slate-300 hover:bg-[#22436e]"
                 }`}
               >
                 Uploaded
@@ -229,7 +235,7 @@ export function InspectionManager() {
                 className={`text-xs px-2.5 py-1.5 rounded transition-colors ${
                   filterMode === "failed"
                     ? "bg-blue-600 text-white"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    : "bg-[#16294a] text-slate-300 hover:bg-[#22436e]"
                 }`}
               >
                 Failed Upload
@@ -239,7 +245,7 @@ export function InspectionManager() {
                 className={`text-xs px-2.5 py-1.5 rounded transition-colors ${
                   filterMode === "duplicates"
                     ? "bg-blue-600 text-white"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    : "bg-[#16294a] text-slate-300 hover:bg-[#22436e]"
                 }`}
               >
                 Duplicates
@@ -250,9 +256,9 @@ export function InspectionManager() {
       </div>
 
       {/* Results */}
-      <div className="bg-white rounded-lg border border-slate-200">
-        <div className="p-4 border-b border-slate-200">
-          <h3 className="text-slate-700">Inspection Records</h3>
+      <div className="bg-[#0f1e35] rounded-lg border border-[#1c3f66]">
+        <div className="p-4 border-b border-[#1c3f66]">
+          <h3 className="text-slate-200">Inspection Records</h3>
           <p className="text-xs text-slate-500 mt-0.5">
             {loading
               ? "Loading…"
@@ -263,7 +269,7 @@ export function InspectionManager() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-100 bg-slate-50">
+              <tr className="border-b border-[#16294a] bg-[#0d1b30]">
                 <th className="text-left text-xs text-slate-500 px-4 py-3">
                   Serial Number
                 </th>
@@ -290,7 +296,7 @@ export function InspectionManager() {
             <tbody>
               {!loading && filteredInspections.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-slate-400">
+                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-slate-500">
                     No inspection records found.
                   </td>
                 </tr>
@@ -298,13 +304,13 @@ export function InspectionManager() {
               {filteredInspections.map((inspection) => (
                 <tr
                   key={inspection.id}
-                  className={`border-b border-slate-50 hover:bg-slate-50 transition-colors ${
+                  className={`border-b border-[#16294a] hover:bg-[#132445] transition-colors ${
                     inspection.isDuplicate ? "bg-yellow-50" : ""
                   }`}
                 >
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <span className="font-mono text-slate-700">
+                      <span className="font-mono text-slate-200">
                         {inspection.serialNumber}
                       </span>
                       {inspection.isDuplicate && (
@@ -312,23 +318,23 @@ export function InspectionManager() {
                       )}
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-slate-600">{inspection.model}</td>
+                  <td className="px-4 py-3 text-slate-300">{inspection.model}</td>
                   <td className="px-4 py-3 text-slate-500">{inspection.date}</td>
-                  <td className="px-4 py-3 text-slate-600">{inspection.inspector}</td>
-                  <td className="px-4 py-3 text-slate-600">{inspection.lot}</td>
+                  <td className="px-4 py-3 text-slate-300">{inspection.inspector}</td>
+                  <td className="px-4 py-3 text-slate-300">{inspection.lot}</td>
                   <td className="px-4 py-3">{getStatusBadge(inspection.uploadStatus)}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => handleView(inspection.uuid)}
-                        className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-600 px-2 py-1 rounded transition-colors"
+                        className="text-xs bg-blue-500/10 hover:bg-blue-500/15 text-blue-400 px-2 py-1 rounded transition-colors"
                       >
                         <Eye size={12} className="inline mr-1" />
                         View
                       </button>
                       <button
                         onClick={() => handleExport(inspection.uuid)}
-                        className="text-xs bg-slate-50 hover:bg-slate-100 text-slate-600 px-2 py-1 rounded transition-colors"
+                        className="text-xs bg-[#0d1b30] hover:bg-[#1c3457] text-slate-300 px-2 py-1 rounded transition-colors"
                       >
                         <Download size={12} className="inline mr-1" />
                         Export
@@ -337,7 +343,7 @@ export function InspectionManager() {
                         onClick={() =>
                           handleDelete(inspection.uuid, inspection.serialNumber)
                         }
-                        className="text-xs bg-red-50 hover:bg-red-100 text-red-600 px-2 py-1 rounded transition-colors"
+                        className="text-xs bg-red-500/10 hover:bg-red-500/15 text-red-400 px-2 py-1 rounded transition-colors"
                       >
                         <Trash2 size={12} className="inline mr-1" />
                         Delete
@@ -354,17 +360,17 @@ export function InspectionManager() {
       {/* Record detail modal */}
       {detail !== null && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[80vh] flex flex-col">
-            <div className="p-4 border-b border-slate-200 flex items-center justify-between">
-              <h3 className="text-slate-800">Inspection Record</h3>
+          <div className="bg-[#0f1e35] rounded-lg shadow-xl w-full max-w-3xl max-h-[80vh] flex flex-col">
+            <div className="p-4 border-b border-[#1c3f66] flex items-center justify-between">
+              <h3 className="text-slate-100">Inspection Record</h3>
               <button
                 onClick={() => setDetail(null)}
-                className="text-sm text-slate-500 hover:text-slate-700"
+                className="text-sm text-slate-500 hover:text-slate-100"
               >
                 Close
               </button>
             </div>
-            <pre className="p-4 overflow-auto text-xs text-slate-700 font-mono whitespace-pre-wrap">
+            <pre className="p-4 overflow-auto text-xs text-slate-200 font-mono whitespace-pre-wrap">
               {detail}
             </pre>
           </div>

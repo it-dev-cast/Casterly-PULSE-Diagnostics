@@ -96,19 +96,19 @@ export function KeyboardTest({ onNext }: KeyboardTestProps) {
   const missingKeys = uniqueKeys.filter((k) => !pressed.has(k) && !failed.has(k));
 
   return (
-    <div className="space-y-5">
+    <div className="-m-6 p-6 min-h-[calc(100vh-6rem)] bg-[#0a1626] space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-slate-800">Keyboard Test</h1>
+          <h1 className="text-slate-100">Keyboard Test</h1>
           <p className="text-sm text-slate-500 mt-0.5">Press each key to verify functionality</p>
         </div>
         <div className="flex items-center gap-3">
-          <div className="text-sm text-slate-600">
-            <span className="text-blue-600">{testedCount}</span>/{totalKeys} keys tested
+          <div className="text-sm text-slate-300">
+            <span className="text-blue-400">{testedCount}</span>/{totalKeys} keys tested
           </div>
           <button
             onClick={reset}
-            className="flex items-center gap-1.5 text-sm text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 px-3 py-1.5 rounded-lg transition-colors"
+            className="flex items-center gap-1.5 text-sm text-slate-300 bg-[#0f1e35] border border-[#1c3f66] hover:bg-[#132445] px-3 py-1.5 rounded-lg transition-colors"
           >
             <RefreshCw size={13} />
             Reset
@@ -117,37 +117,37 @@ export function KeyboardTest({ onNext }: KeyboardTestProps) {
       </div>
 
       {/* Progress */}
-      <div className="bg-white rounded-lg border border-slate-200 p-4">
+      <div className="bg-[#0f1e35] rounded-lg border border-[#1c3f66] p-4">
         <div className="flex items-center justify-between mb-3">
           <div>
-            <div className="text-sm text-slate-600 mb-1">Test Progress</div>
-            <div className="text-2xl text-blue-600">
+            <div className="text-sm text-slate-300 mb-1">Test Progress</div>
+            <div className="text-2xl text-blue-400">
               {testedCount} / {totalKeys} <span className="text-sm text-slate-500">keys tested</span>
             </div>
           </div>
           <div className="text-right">
-            <div className="text-3xl text-blue-600">{pct}%</div>
+            <div className="text-3xl text-blue-400">{pct}%</div>
             <div className="text-xs text-slate-500">Complete</div>
           </div>
         </div>
-        <div className="h-2 bg-slate-100 rounded-full overflow-hidden mb-3">
+        <div className="h-2 bg-[#16294a] rounded-full overflow-hidden mb-3">
           <div
             className="h-full bg-blue-500 rounded-full transition-all"
             style={{ width: `${pct}%` }}
           />
         </div>
         <div className="grid grid-cols-3 gap-3 text-xs">
-          <div className="bg-slate-50 rounded p-2 text-center">
+          <div className="bg-[#0d1b30] rounded p-2 text-center">
             <div className="text-slate-500">Not Pressed</div>
-            <div className="text-base text-slate-600 mt-0.5">{missingKeys.length}</div>
+            <div className="text-base text-slate-300 mt-0.5">{missingKeys.length}</div>
           </div>
-          <div className="bg-emerald-50 rounded p-2 text-center">
-            <div className="text-emerald-600">Pressed</div>
-            <div className="text-base text-emerald-700 mt-0.5">{pressed.size}</div>
+          <div className="bg-emerald-500/10 rounded p-2 text-center">
+            <div className="text-emerald-400">Pressed</div>
+            <div className="text-base text-emerald-300 mt-0.5">{pressed.size}</div>
           </div>
-          <div className="bg-red-50 rounded p-2 text-center">
-            <div className="text-red-600">Failed</div>
-            <div className="text-base text-red-700 mt-0.5">{failed.size}</div>
+          <div className="bg-red-500/10 rounded p-2 text-center">
+            <div className="text-red-400">Failed</div>
+            <div className="text-base text-red-300 mt-0.5">{failed.size}</div>
           </div>
         </div>
       </div>
@@ -207,7 +207,7 @@ export function KeyboardTest({ onNext }: KeyboardTestProps) {
           ].map((l) => (
             <div key={l.label} className="flex items-center gap-1.5">
               <div className={`w-4 h-3 rounded border ${l.color}`} />
-              <span className="text-slate-400">{l.label}</span>
+              <span className="text-slate-500">{l.label}</span>
             </div>
           ))}
         </div>
@@ -215,13 +215,13 @@ export function KeyboardTest({ onNext }: KeyboardTestProps) {
 
       {/* Missing/Failed keys */}
       {(missingKeys.length > 0 || failed.size > 0) && testedCount > 0 && (
-        <div className="bg-white rounded-lg border border-slate-200 p-4">
+        <div className="bg-[#0f1e35] rounded-lg border border-[#1c3f66] p-4">
           {missingKeys.length > 0 && (
             <div className="mb-3">
-              <h3 className="text-sm text-slate-700 mb-2">Missing ({missingKeys.length})</h3>
+              <h3 className="text-sm text-slate-200 mb-2">Missing ({missingKeys.length})</h3>
               <div className="flex flex-wrap gap-1.5">
                 {missingKeys.map((k) => (
-                  <span key={k} className="px-2 py-1 bg-slate-100 text-slate-600 rounded text-xs border border-slate-200 font-mono">
+                  <span key={k} className="px-2 py-1 bg-[#16294a] text-slate-300 rounded text-xs border border-[#1c3f66] font-mono">
                     {k}
                   </span>
                 ))}
@@ -230,10 +230,10 @@ export function KeyboardTest({ onNext }: KeyboardTestProps) {
           )}
           {failed.size > 0 && (
             <div>
-              <h3 className="text-sm text-red-700 mb-2">Failed Keys ({failed.size})</h3>
+              <h3 className="text-sm text-red-300 mb-2">Failed Keys ({failed.size})</h3>
               <div className="flex flex-wrap gap-1.5">
                 {Array.from(failed).map((k) => (
-                  <span key={k} className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs border border-red-200 font-mono">
+                  <span key={k} className="px-2 py-1 bg-red-500/15 text-red-300 rounded text-xs border border-red-500/30 font-mono">
                     {k}
                   </span>
                 ))}
@@ -244,8 +244,8 @@ export function KeyboardTest({ onNext }: KeyboardTestProps) {
       )}
 
       {/* Manual Override */}
-      <div className="bg-white rounded-lg border border-slate-200 p-4">
-        <h3 className="text-slate-700 mb-3">Test Result</h3>
+      <div className="bg-[#0f1e35] rounded-lg border border-[#1c3f66] p-4">
+        <h3 className="text-slate-200 mb-3">Test Result</h3>
         {!result ? (
           <div className="flex gap-3">
             <button
@@ -265,7 +265,7 @@ export function KeyboardTest({ onNext }: KeyboardTestProps) {
           </div>
         ) : (
           <div className={`flex items-center gap-2 p-3 rounded-lg ${
-            result === "pass" ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
+            result === "pass" ? "bg-emerald-500/10 text-emerald-300" : "bg-red-500/10 text-red-300"
           }`}>
             {result === "pass" ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
             <span className="text-sm">Keyboard {result === "pass" ? "Passed" : "Failed"}</span>
@@ -277,7 +277,7 @@ export function KeyboardTest({ onNext }: KeyboardTestProps) {
         <button
           onClick={onNext}
           disabled={!result}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white text-sm px-5 py-2.5 rounded-lg transition-colors"
+          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:bg-[#1c3f66] disabled:text-slate-500 disabled:cursor-not-allowed text-white text-sm px-5 py-2.5 rounded-lg transition-colors"
         >
           Continue to Touchpad Test
           <ChevronRight size={15} />

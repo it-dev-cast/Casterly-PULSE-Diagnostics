@@ -42,7 +42,7 @@ pub fn delete_record(
     conn.execute(
 
         "
-        DELETE FROM inspections
+        DELETE FROM tbl_pulse_inspections
         WHERE id=?
         ",
 

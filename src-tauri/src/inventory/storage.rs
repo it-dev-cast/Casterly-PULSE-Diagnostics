@@ -71,6 +71,11 @@ pub fn collect() -> Result<Vec<StorageDevice>> {
 
         let device = format!("/dev/{}", name);
 
+        // Kept as raw binary GiB (not decimal GB) -- this is the internal
+        // value other calculations (e.g. health percentages) rely on.
+        // Display layers (System Scan, Hardware Inventory, and the PDF
+        // report) convert this to a marketed capacity label like "256 GB"
+        // via normalizeCapacity() instead of changing the unit here.
         let size_gb =
             size_bytes / 1024.0 / 1024.0 / 1024.0;
 

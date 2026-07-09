@@ -29,9 +29,10 @@ import { SyncStatus } from "./components/screens/SyncStatus";
 import { InspectionManager } from "./components/screens/InspectionManager";
 import { DuplicateDetection } from "./components/screens/DuplicateDetection";
 import { InspectionSaveConfirmation } from "./components/screens/InspectionSaveConfirmation";
+import { ClyNumberModal } from "./components/ClyNumberModal";
 import { useInspection } from "./context/InspectionContext";
 import { buildInspectionRun } from "./lib/report";
-import { buildInspectionPdf, uint8ToBase64 } from "./lib/pdf";
+import { buildInspectionPdf, buildExportFilename, uint8ToBase64 } from "./lib/pdf";
 import { message } from "@tauri-apps/plugin-dialog";
 
 const STAGE_ORDER = [
@@ -48,7 +49,7 @@ const STAGE_ORDER = [
 ];
 
 export default function App() {
-  const { data } = useInspection();
+  const { data, resetInspection } = useInspection();
   const [currentScreen, setCurrentScreen] =
     useState<string>("startup-home");
   // Holds the assembled inspection payload when a duplicate is detected, so the
@@ -83,6 +84,10 @@ export default function App() {
     lotName: string;
     inspectorName: string;
   }>({ lotName: "", inspectorName: "" });
+  // Mandatory CLY Number (e.g. "CLY-1234"), captured fresh for every
+  // inspection via ClyNumberModal before the workflow is allowed to start.
+  const [clyNo, setClyNo] = useState<string>("");
+  const [showClyModal, setShowClyModal] = useState(false);
   // Real activity log for the Progress Metrics panel (replaces mock timeline
   // entries). Populated as stages actually complete, with real timestamps.
   const [activityLog, setActivityLog] = useState<
@@ -241,6 +246,7 @@ export default function App() {
       {
         lotName: info.lotName,
         inspector: info.inspector,
+        clyNo,
         jsonData: info.jsonData,
         uuid: data.uuid,
       },
@@ -261,23 +267,41 @@ export default function App() {
     // best-effort upload both files to Supabase Storage (bucket "PULSE").
     // Shows a confirmation message depending on which destinations succeeded.
     try {
-      const run = buildInspectionRun(data, info.lotName, info.inspector, grade);
+      const run = buildInspectionRun(data, info.lotName, info.inspector, grade, clyNo);
       run.uuid = result.uuid;
       run.timestamp = result.timestamp;
-      const pdfBytes = buildInspectionPdf(run);
+      const pdfBytes = await buildInspectionPdf(run);
       const pdfBase64 = uint8ToBase64(pdfBytes);
+      const fileBaseName = buildExportFilename(run).replace(/\.pdf$/i, "");
 
       const exportResult = await invoke<{
+        jsonSaved: boolean;
+        pdfSaved: boolean;
         localSaved: boolean;
         cloudUploaded: boolean;
+        error?: string | null;
       }>("export_inspection_files", {
         uuid: result.uuid,
         pdfBase64,
+        fileBaseName,
       });
 
       console.log("Export result:", exportResult);
 
-      if (exportResult.cloudUploaded) {
+      // Check the PDF pendrive write FIRST and independently of everything
+      // else. Previously a successful Supabase upload (which uploads the PDF
+      // bytes straight from memory, not from the local file) would show a
+      // blanket "saved successfully" message even when the local PDF write
+      // had actually failed -- silently hiding a missing pendrive copy. Now
+      // a PDF write failure is always reported, regardless of cloud status.
+      if (!exportResult.pdfSaved) {
+        await message(
+          `Inspection saved, but the PDF was NOT saved to the pendrive's exports folder.${
+            exportResult.error ? `\n\nReason: ${exportResult.error}` : ""
+          }`,
+          { title: "PDF Not Saved to Pendrive", kind: "warning" },
+        );
+      } else if (exportResult.cloudUploaded) {
         await message("Inspection saved and exported successfully to the server", {
           title: "Inspection Saved",
           kind: "info",
@@ -401,6 +425,7 @@ export default function App() {
       await invoke<{ uuid: string; timestamp: string }>("save_inspection", {
         lotName,
         inspector,
+        clyNo,
         jsonData: buildInspectionPayload(),
         uuid: data.uuid,
       });
@@ -476,7 +501,16 @@ export default function App() {
     }
   };
 
+  // Guards against jumping ahead to a stage that hasn't been reached yet
+  // (the sidebar already disables "pending" stage buttons, but this is a
+  // second line of defense for any other caller of goToStage). A stage is
+  // fair game once it's "active" (in progress) or further along.
   const goToStage = (id: string) => {
+    const stage = stages.find((s) => s.id === id);
+    if (stage && stage.status === "pending") {
+      alert("Complete the previous steps first.");
+      return;
+    }
     setCurrentScreen(id);
   };
 
@@ -484,7 +518,22 @@ export default function App() {
     setCurrentScreen("inspection-history");
   };
 
+  // Both "Start New Inspection" (Active LOT summary) and "New Inspection"
+  // (completion screen) call this. It no longer jumps straight into the
+  // workflow — a mandatory CLY Number must be entered first via
+  // ClyNumberModal (see beginInspection below).
   const startInspection = () => {
+    setShowClyModal(true);
+  };
+
+  // Runs once the CLY Number has been entered and confirmed. Wipes all
+  // per-device inspection data (scan results, grading, test results, etc.)
+  // back to the same blank state as a fresh app launch, so neither entry
+  // point can leak the previous device's values into the new one.
+  const beginInspection = (enteredClyNo: string) => {
+    setClyNo(enteredClyNo);
+    setShowClyModal(false);
+    resetInspection();
 
     setStages(
       defaultStages.map((s, i) => ({
@@ -687,6 +736,7 @@ export default function App() {
           <FinalReview
             onComplete={handleFinalReviewComplete}
             onSaveDraft={handleSaveDraft}
+            clyNo={clyNo}
           />
         );
       case "inspection-complete":
@@ -779,16 +829,18 @@ export default function App() {
 
       {/* Summary Panel with responsive behavior */}
       {showInWorkflow && layoutMode === "full" && (
-        <SummaryPanel
-          completionPct={completionPct}
-          passed={passed}
-          failed={failed}
-          remaining={remaining}
-          alerts={alerts}
-          elapsedTime="00:22"
-          currentStage={currentScreen}
-          activityLog={activityLog}
-        />
+        <div className="fixed right-0 top-16 bottom-0 w-64 z-40">
+          <SummaryPanel
+            completionPct={completionPct}
+            passed={passed}
+            failed={failed}
+            remaining={remaining}
+            alerts={alerts}
+            elapsedTime="00:22"
+            currentStage={currentScreen}
+            activityLog={activityLog}
+          />
+        </div>
       )}
 
       {/* Standard mode - Collapsible panel */}
@@ -893,10 +945,7 @@ export default function App() {
                     </svg>
                   </button>
                 </div>
-                <div
-                  className="overflow-y-auto"
-                  style={{ height: "calc(100% - 57px)" }}
-                >
+                <div style={{ height: "calc(100% - 57px)" }}>
                   <SummaryPanel
                     completionPct={completionPct}
                     passed={passed}
@@ -913,6 +962,12 @@ export default function App() {
           )}
         </>
       )}
+
+      <ClyNumberModal
+        open={showClyModal}
+        onConfirm={beginInspection}
+        onCancel={() => setShowClyModal(false)}
+      />
     </div>
   );
 }

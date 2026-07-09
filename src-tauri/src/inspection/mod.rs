@@ -1,5 +1,6 @@
 pub mod save;
 pub mod persist;
+pub mod grade;
 pub mod hardware_reports;
 pub mod stats;
 pub mod browser;

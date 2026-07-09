@@ -226,9 +226,9 @@ function InfoCard({ icon: Icon, title, items, status = "ok" }: InfoCardProps) {
 
   // Tailwind classes for each status badge variant
   const statusBadge = {
-    ok:       "bg-emerald-100 text-emerald-700",
-    warn:     "bg-amber-100 text-amber-700",
-    critical: "bg-red-100 text-red-700",
+    ok:       "bg-emerald-500/15 text-emerald-300",
+    warn:     "bg-amber-500/15 text-amber-300",
+    critical: "bg-red-500/15 text-red-300",
   };
 
   // Human-readable label shown inside the badge
@@ -239,13 +239,13 @@ function InfoCard({ icon: Icon, title, items, status = "ok" }: InfoCardProps) {
   };
 
   return (
-    <div className="bg-white rounded-lg border border-slate-200 overflow-hidden flex flex-col">
+    <div className="bg-[#0f1e35] rounded-lg border border-[#1c3f66] overflow-hidden flex flex-col">
 
       {/* ── Card Header ─────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between px-3 py-1.5 bg-slate-50 border-b border-slate-200">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-[#0d1b30] border-b border-[#1c3f66]">
         <div className="flex items-center gap-2">
-          <Icon size={14} className="text-blue-600" />
-          <span className="text-[11px] text-slate-700 font-medium">{title}</span>
+          <Icon size={14} className="text-blue-400" />
+          <span className="text-[11px] text-slate-200 font-medium">{title}</span>
         </div>
 
         <span className={`text-[9px] px-2 py-0.5 rounded-full ${statusBadge[status]}`}>
@@ -258,7 +258,7 @@ function InfoCard({ icon: Icon, title, items, status = "ok" }: InfoCardProps) {
         {items.map((item) => (
           <div key={item.label} className="flex items-center justify-between gap-2 px-1.5 py-0.5">
             <span className="text-[9px] text-slate-500 leading-tight">{item.label}</span>
-            <span className="text-[10px] text-slate-800 font-medium leading-tight text-right break-words">
+            <span className="text-[10px] text-slate-100 font-medium leading-tight text-right break-words">
               {item.value}
             </span>
           </div>
@@ -615,13 +615,13 @@ export function SystemScan({ onNext, isExecutionActive }: SystemScanProps) {
   // RENDER
   // ===========================================================================
   return (
-    <div className="space-y-5">
+    <div className="-m-6 p-6 min-h-[calc(100vh-6rem)] bg-[#0a1626] space-y-5">
 
       {/* ── Page Header ───────────────────────────────────────────────────── */}
       {/* Title/subtitle on the left; Re-scan button + scan progress on the right */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-slate-800">System Scan</h1>
+          <h1 className="text-slate-100">System Scan</h1>
           <p className="text-sm text-slate-500 mt-0.5">
             Automated hardware detection and diagnostics
           </p>
@@ -635,14 +635,14 @@ export function SystemScan({ onNext, isExecutionActive }: SystemScanProps) {
               scanAlreadyCompleted = false;
               window.location.reload();
             }}
-            className="flex items-center gap-2 text-sm text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 px-3 py-2 rounded-lg transition-colors"
+            className="flex items-center gap-2 text-sm text-slate-300 bg-[#0f1e35] border border-[#1c3f66] hover:bg-[#132445] px-3 py-2 rounded-lg transition-colors"
           >
             <RefreshCw size={14} />
             Re-scan
           </button>
 
           {/* Scan progress badge — switches to "complete" message at 8/8 */}
-          <div className="flex items-center gap-1.5 text-xs bg-emerald-50 border border-emerald-200 text-emerald-700 px-3 py-1.5 rounded-lg">
+          <div className="flex items-center gap-1.5 text-xs bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 px-3 py-1.5 rounded-lg">
             <CheckCircle2 size={13} />
             {completedCalls >= 10
               ? "Scan Complete - Auto advancing..."

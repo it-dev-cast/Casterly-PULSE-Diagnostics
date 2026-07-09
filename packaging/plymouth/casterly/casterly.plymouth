@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Casterly
+Description=Casterly Pulse branded silent boot splash (replaces the stock Ubuntu logo)
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/casterly
+ScriptFile=/usr/share/plymouth/themes/casterly/casterly.script

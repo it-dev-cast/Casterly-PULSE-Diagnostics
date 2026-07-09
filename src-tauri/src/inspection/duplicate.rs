@@ -16,7 +16,7 @@ pub fn serial_exists(
 
             "
             SELECT json_data
-            FROM inspections
+            FROM tbl_pulse_inspections
             WHERE lot_name = ?
             "
 

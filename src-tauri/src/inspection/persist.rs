@@ -28,6 +28,7 @@ pub struct SaveResult {
 pub fn save_inspection(
     conn: &Connection,
     usb_id: &str,
+    cly_no: &str,
     inspector: &str,
     lot_name: &str,
     json_data: &str,
@@ -47,13 +48,22 @@ pub fn save_inspection(
     let mut value: Value = serde_json::from_str(json_data)
         .map_err(|e| format!("invalid inspection JSON: {}", e))?;
 
+    // Derive the overall refurb grade (A/B/C) from the grading + functional
+    // test results the frontend already assembled into `json_data`, and store
+    // it as a real top-level field. Previously nothing ever wrote a "grade"
+    // key here, so it stayed null both locally and after Supabase sync (the
+    // sync engine reads it from this same JSON via a "/grade" pointer).
+    let grade = crate::inspection::grade::grade_for(&value);
+
     if let Some(obj) = value.as_object_mut() {
         obj.insert("uuid".into(), Value::String(uuid.clone()));
         obj.insert("usb_id".into(), Value::String(usb_id.to_string()));
+        obj.insert("cly_no".into(), Value::String(cly_no.to_string()));
         obj.insert("inspector".into(), Value::String(inspector.to_string()));
         obj.insert("lot_name".into(), Value::String(lot_name.to_string()));
         obj.insert("timestamp".into(), Value::String(timestamp.clone()));
         obj.insert("uploaded".into(), Value::Bool(false));
+        obj.insert("grade".into(), Value::String(grade.clone()));
     } else {
         return Err("inspection JSON must be an object".to_string());
     }
@@ -63,11 +73,11 @@ pub fn save_inspection(
 
     conn.execute(
         "
-        INSERT INTO inspections
-        (uuid, lot_name, inspector, timestamp, uploaded, json_data)
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        INSERT INTO tbl_pulse_inspections
+        (uuid, cly_no, lot_name, inspector, timestamp, uploaded, json_data, grade)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
         ",
-        params![uuid, lot_name, inspector, timestamp, 0, json],
+        params![uuid, cly_no, lot_name, inspector, timestamp, 0, json, grade],
     )
     .map_err(|e| e.to_string())?;
 

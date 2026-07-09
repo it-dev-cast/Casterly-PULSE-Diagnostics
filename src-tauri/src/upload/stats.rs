@@ -9,7 +9,7 @@ pub fn pending_count(
 
         "
         SELECT COUNT(*)
-        FROM upload_queue
+        FROM tbl_pulse_upload_queue
         WHERE status='PENDING'
         ",
 

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { CheckCircle2, Download, Plus, Home, Star } from "lucide-react";
 import { motion } from "motion/react";
 import { invoke } from "@tauri-apps/api/core";
-import { buildReportHtml, printHtmlReport } from "../../lib/report";
+import { exportReportFiles } from "../../lib/exportReport";
 
 function deriveGrade(run: any): string {
   const g = run?.grading || {};
@@ -79,10 +79,10 @@ export function InspectionComplete({
   }, [uuid]);
 
   const uploadLabel = uploaded ? "Completed" : "Pending";
-  const uploadColor = uploaded ? "text-emerald-600" : "text-amber-600";
+  const uploadColor = uploaded ? "text-emerald-400" : "text-amber-400";
   const uploadBg = uploaded
-    ? "bg-emerald-50 border-emerald-200"
-    : "bg-amber-50 border-amber-200";
+    ? "bg-emerald-500/10 border-emerald-500/30"
+    : "bg-amber-500/10 border-amber-500/30";
 
   const sys = rec?.inventory?.system || {};
   const vSerial = serial || sys.serial_number || "—";
@@ -99,7 +99,9 @@ export function InspectionComplete({
     }
     try {
       const json = await invoke<string>("get_inspection_detail", { uuid });
-      printHtmlReport(buildReportHtml(JSON.parse(json)));
+      const run = JSON.parse(json);
+      const folder = await exportReportFiles(run);
+      if (folder) alert(`Report saved to:\n${folder}`);
     } catch (err) {
       console.error("Failed to generate report:", err);
       alert(`Failed to generate report: ${err}`);
@@ -107,7 +109,7 @@ export function InspectionComplete({
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-8">
+    <div className="-m-6 p-6 min-h-[calc(100vh-6rem)] bg-[#0a1626] flex flex-col items-center justify-center text-center space-y-8">
       {/* Success animation */}
       <motion.div
         initial={{ scale: 0, opacity: 0 }}
@@ -115,8 +117,8 @@ export function InspectionComplete({
         transition={{ type: "spring", stiffness: 200, damping: 15 }}
         className="relative"
       >
-        <div className="w-24 h-24 rounded-full bg-emerald-100 flex items-center justify-center">
-          <CheckCircle2 size={48} className="text-emerald-500" />
+        <div className="w-24 h-24 rounded-full bg-emerald-500/15 flex items-center justify-center">
+          <CheckCircle2 size={48} className="text-emerald-400" />
         </div>
         <div className="absolute -top-1 -right-1 w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs">
           <Star size={14} fill="white" />
@@ -129,11 +131,11 @@ export function InspectionComplete({
         transition={{ delay: 0.3 }}
         className="space-y-2"
       >
-        <h1 className="text-slate-800 text-3xl">Inspection Complete!</h1>
+        <h1 className="text-slate-100 text-3xl">Inspection Complete!</h1>
         <p className="text-slate-500">
           {vModel} · Serial: {vSerial}
         </p>
-        <p className="text-slate-400 text-sm">
+        <p className="text-slate-500 text-sm">
           LOT {vLot} · Inspected by {vInspector}
         </p>
       </motion.div>
@@ -146,10 +148,10 @@ export function InspectionComplete({
         className="flex gap-4"
       >
         {[
-          { label: "Refurb Grade", value: vGrade ? `Grade ${vGrade}` : "—", color: "text-emerald-600", bg: "bg-emerald-50 border-emerald-200" },
+          { label: "Refurb Grade", value: vGrade ? `Grade ${vGrade}` : "—", color: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/30" },
           { label: "Upload", value: uploadLabel, color: uploadColor, bg: uploadBg },
-          { label: "Inspector", value: vInspector, color: "text-slate-600", bg: "bg-slate-50 border-slate-200" },
-          { label: "LOT", value: vLot, color: "text-blue-600", bg: "bg-blue-50 border-blue-200" },
+          { label: "Inspector", value: vInspector, color: "text-slate-300", bg: "bg-[#0d1b30] border-[#1c3f66]" },
+          { label: "LOT", value: vLot, color: "text-blue-400", bg: "bg-blue-500/10 border-blue-500/30" },
         ].map((item) => (
           <div key={item.label} className={`rounded-xl border px-6 py-4 text-center ${item.bg}`}>
             <div className={`text-xl leading-none ${item.color}`}>{item.value}</div>
@@ -167,14 +169,14 @@ export function InspectionComplete({
       >
         <button
           onClick={handleDownloadReport}
-          className="flex items-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 text-sm px-4 py-2.5 rounded-lg transition-colors"
+          className="flex items-center gap-2 bg-[#0f1e35] border border-[#1c3f66] hover:bg-[#132445] text-slate-300 text-sm px-4 py-2.5 rounded-lg transition-colors"
         >
           <Download size={15} />
           Download Report
         </button>
         <button
           onClick={onHome}
-          className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm px-4 py-2.5 rounded-lg transition-colors"
+          className="flex items-center gap-2 bg-[#16294a] hover:bg-[#22436e] text-slate-200 text-sm px-4 py-2.5 rounded-lg transition-colors"
         >
           <Home size={15} />
           Go Home
@@ -193,9 +195,9 @@ export function InspectionComplete({
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.9 }}
-        className="bg-white rounded-xl border border-slate-200 p-5 w-full max-w-md text-left"
+        className="bg-[#0f1e35] rounded-xl border border-[#1c3f66] p-5 w-full max-w-md text-left"
       >
-        <h3 className="text-slate-700 mb-3">Saved Record</h3>
+        <h3 className="text-slate-200 mb-3">Saved Record</h3>
         <div className="space-y-2">
           {[
             { label: "Inspection UUID", value: uuid || "—", mono: true },
@@ -210,7 +212,7 @@ export function InspectionComplete({
               <span
                 className={`text-xs font-medium text-right break-all ${
                   row.mono ? "font-mono" : ""
-                } ${row.color || "text-slate-700"}`}
+                } ${row.color || "text-slate-200"}`}
               >
                 {row.value}
               </span>

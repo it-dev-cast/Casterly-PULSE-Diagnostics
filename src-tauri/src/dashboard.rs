@@ -100,59 +100,11 @@ fn ptr_str<'a>(json: &'a Value, pointer: &str) -> &'a str {
     json.pointer(pointer).and_then(|v| v.as_str()).unwrap_or("")
 }
 
-/// A device is "failed" if any cosmetic component or functional test is FAIL.
-fn is_failed(json: &Value) -> bool {
-    if let Some(g) = json.get("grading").and_then(|v| v.as_object()) {
-        for (k, v) in g {
-            if k.ends_with("_status")
-                && v.as_str()
-                    .map(|s| s.eq_ignore_ascii_case("FAIL"))
-                    .unwrap_or(false)
-            {
-                return true;
-            }
-        }
-    }
-    for t in [
-        "speaker_test",
-        "webcam_test",
-        "keyboard_test",
-        "touchpad_test",
-        "battery_assessment",
-    ] {
-        if json
-            .pointer(&format!("/{}/result", t))
-            .and_then(|v| v.as_str())
-            .map(|s| s.eq_ignore_ascii_case("FAIL"))
-            .unwrap_or(false)
-        {
-            return true;
-        }
-    }
-    false
-}
-
-/// Derive a refurb grade from the stored grading (C = any fail, A = all pass,
-/// otherwise B).
-fn grade_for(json: &Value) -> String {
-    if is_failed(json) {
-        return "C".to_string();
-    }
-    if let Some(g) = json.get("grading").and_then(|v| v.as_object()) {
-        let all_pass = g
-            .iter()
-            .filter(|(k, _)| k.ends_with("_status"))
-            .all(|(_, v)| {
-                v.as_str()
-                    .map(|s| s.eq_ignore_ascii_case("PASS"))
-                    .unwrap_or(false)
-            });
-        if all_pass {
-            return "A".to_string();
-        }
-    }
-    "B".to_string()
-}
+// grade_for()/is_failed() moved to crate::inspection::grade so the exact same
+// logic is used both here (read-model) and in inspection::persist::save_inspection
+// (write path), keeping the displayed grade and the stored `grade` column/field
+// in sync.
+use crate::inspection::grade::{grade_for, is_failed};
 
 fn count_where(conn: &Connection, sql: &str) -> i64 {
     conn.query_row(sql, [], |row| row.get(0)).unwrap_or(0)
@@ -179,7 +131,7 @@ fn current_lot(conn: &Connection) -> Option<LotInfo> {
     }
 
     conn.query_row(
-        "SELECT customer, inspection_date FROM lots WHERE lot_name = ?1 LIMIT 1",
+        "SELECT customer, inspection_date FROM tbl_pulse_lots WHERE lot_name = ?1 LIMIT 1",
         rusqlite::params![name],
         |row| {
             Ok(LotInfo {
@@ -198,9 +150,9 @@ fn current_lot(conn: &Connection) -> Option<LotInfo> {
 }
 
 pub fn get_dashboard(conn: &Connection) -> Result<DashboardData, String> {
-    let stored_locally = count_where(conn, "SELECT COUNT(*) FROM inspections");
+    let stored_locally = count_where(conn, "SELECT COUNT(*) FROM tbl_pulse_inspections");
     let pending_upload =
-        count_where(conn, "SELECT COUNT(*) FROM upload_queue WHERE status='PENDING'");
+        count_where(conn, "SELECT COUNT(*) FROM tbl_pulse_upload_queue WHERE status='PENDING'");
 
     // Today's inspections — timestamps are stored as 'dd/mm/YYYY HH:MM:SS'.
     let today = Local::now().format("%d/%m/%Y").to_string();
@@ -208,7 +160,7 @@ pub fn get_dashboard(conn: &Connection) -> Result<DashboardData, String> {
     let mut failed = 0i64;
 
     if let Ok(mut stmt) =
-        conn.prepare("SELECT timestamp, json_data FROM inspections")
+        conn.prepare("SELECT timestamp, json_data FROM tbl_pulse_inspections")
     {
         let rows = stmt.query_map([], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
@@ -285,8 +237,8 @@ pub fn get_upload_queue(conn: &Connection) -> Result<QueueData, String> {
             "
             SELECT q.id, q.inspection_uuid, q.status, q.retry_count,
                    q.created_at, q.uploaded_at, i.json_data
-            FROM upload_queue q
-            LEFT JOIN inspections i ON i.uuid = q.inspection_uuid
+            FROM tbl_pulse_upload_queue q
+            LEFT JOIN tbl_pulse_inspections i ON i.uuid = q.inspection_uuid
             ORDER BY q.id DESC
             ",
         )
@@ -327,15 +279,15 @@ pub fn get_upload_queue(conn: &Connection) -> Result<QueueData, String> {
     Ok(QueueData {
         pending: count_where(
             conn,
-            "SELECT COUNT(*) FROM upload_queue WHERE status='PENDING'",
+            "SELECT COUNT(*) FROM tbl_pulse_upload_queue WHERE status='PENDING'",
         ),
         uploaded: count_where(
             conn,
-            "SELECT COUNT(*) FROM upload_queue WHERE status='UPLOADED'",
+            "SELECT COUNT(*) FROM tbl_pulse_upload_queue WHERE status='UPLOADED'",
         ),
         failed: count_where(
             conn,
-            "SELECT COUNT(*) FROM upload_queue WHERE status='FAILED'",
+            "SELECT COUNT(*) FROM tbl_pulse_upload_queue WHERE status='FAILED'",
         ),
         items,
     })
@@ -345,17 +297,17 @@ pub fn get_sync_status(conn: &Connection) -> Result<SyncStatusData, String> {
     Ok(SyncStatusData {
         pending: count_where(
             conn,
-            "SELECT COUNT(*) FROM upload_queue WHERE status='PENDING'",
+            "SELECT COUNT(*) FROM tbl_pulse_upload_queue WHERE status='PENDING'",
         ),
         uploaded: count_where(
             conn,
-            "SELECT COUNT(*) FROM upload_queue WHERE status='UPLOADED'",
+            "SELECT COUNT(*) FROM tbl_pulse_upload_queue WHERE status='UPLOADED'",
         ),
         failed: count_where(
             conn,
-            "SELECT COUNT(*) FROM upload_queue WHERE status='FAILED'",
+            "SELECT COUNT(*) FROM tbl_pulse_upload_queue WHERE status='FAILED'",
         ),
-        total: count_where(conn, "SELECT COUNT(*) FROM upload_queue"),
+        total: count_where(conn, "SELECT COUNT(*) FROM tbl_pulse_upload_queue"),
         last_sync: get_setting(conn, "last_sync"),
     })
 }
@@ -367,7 +319,7 @@ pub fn get_inspections(conn: &Connection) -> Result<Vec<InspectionRow>, String> 
         .prepare(
             "
             SELECT id, uuid, inspector, lot_name, timestamp, uploaded, json_data
-            FROM inspections
+            FROM tbl_pulse_inspections
             ORDER BY id DESC
             ",
         )

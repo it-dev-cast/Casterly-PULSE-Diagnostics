@@ -13,7 +13,7 @@ pub fn create_default_settings(
     conn.execute(
 
         "
-        INSERT OR IGNORE INTO settings
+        INSERT OR IGNORE INTO tbl_pulse_settings
         (key,value)
         VALUES
         ('usb_id','UDIAG-001')
@@ -25,7 +25,7 @@ pub fn create_default_settings(
     conn.execute(
 
         "
-        INSERT OR IGNORE INTO settings
+        INSERT OR IGNORE INTO tbl_pulse_settings
         (key,value)
         VALUES
         ('inspector','')
@@ -37,7 +37,7 @@ pub fn create_default_settings(
     conn.execute(
 
         "
-        INSERT OR IGNORE INTO settings
+        INSERT OR IGNORE INTO tbl_pulse_settings
         (key,value)
         VALUES
         ('active_lot','')
@@ -49,7 +49,7 @@ pub fn create_default_settings(
     conn.execute(
 
         "
-        INSERT OR IGNORE INTO settings
+        INSERT OR IGNORE INTO tbl_pulse_settings
         (key,value)
         VALUES
         ('last_sync','Never')
@@ -61,7 +61,7 @@ pub fn create_default_settings(
     conn.execute(
 
         "
-        INSERT OR IGNORE INTO settings
+        INSERT OR IGNORE INTO tbl_pulse_settings
         (key,value)
         VALUES
         ('version','3.0')
@@ -74,7 +74,7 @@ pub fn create_default_settings(
     // via the settings table / future Settings screen.
     conn.execute(
         "
-        INSERT OR IGNORE INTO settings (key, value)
+        INSERT OR IGNORE INTO tbl_pulse_settings (key, value)
         VALUES ('supabase_url', 'https://pesgdrfeauofhtbjqkbz.supabase.co')
         ",
         []
@@ -82,7 +82,7 @@ pub fn create_default_settings(
 
     conn.execute(
         "
-        INSERT OR IGNORE INTO settings (key, value)
+        INSERT OR IGNORE INTO tbl_pulse_settings (key, value)
         VALUES ('supabase_key', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlc2dkcmZlYXVvZmh0Ympxa2J6Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NzgwNjg5NywiZXhwIjoyMDkzMzgyODk3fQ.pqikpnfrtSttjAS6Z4A-zyUyzTypveMEllxCuHVjqpE')
         ",
         []
@@ -98,7 +98,7 @@ pub fn get_setting(
 
         "
         SELECT value
-        FROM settings
+        FROM tbl_pulse_settings
         WHERE key=?
         ",
 
@@ -158,7 +158,7 @@ pub fn set_setting(
     conn.execute(
 
         "
-        UPDATE settings
+        UPDATE tbl_pulse_settings
         SET value = ?
         WHERE key = ?
         ",
@@ -181,7 +181,7 @@ pub fn upsert_setting(
 {
     conn.execute(
         "
-        INSERT INTO settings (key, value)
+        INSERT INTO tbl_pulse_settings (key, value)
         VALUES (?1, ?2)
         ON CONFLICT(key) DO UPDATE SET value = excluded.value
         ",

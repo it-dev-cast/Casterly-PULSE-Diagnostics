@@ -70,15 +70,15 @@ export function WebcamTest({ onNext }: WebcamTestProps) {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="-m-6 p-6 min-h-[calc(100vh-6rem)] bg-[#0a1626] space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-slate-800">Webcam Test</h1>
+          <h1 className="text-slate-100">Webcam Test</h1>
           <p className="text-sm text-slate-500 mt-0.5">Verify camera functionality and image quality</p>
         </div>
         {result && (
           <div className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg ${
-            result === "pass" ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"
+            result === "pass" ? "bg-emerald-500/15 text-emerald-300" : "bg-red-500/15 text-red-300"
           }`}>
             {result === "pass" ? <CheckCircle2 size={15} /> : <XCircle size={15} />}
             {result === "pass" ? "Webcam Passed" : "Webcam Failed"}
@@ -87,7 +87,7 @@ export function WebcamTest({ onNext }: WebcamTestProps) {
       </div>
 
       <div className="max-w-2xl mx-auto">
-        <div className={`bg-white rounded-xl border-2 transition-all ${
+        <div className={`bg-[#0f1e35] rounded-xl border-2 transition-all ${
           result === "pass" ? "border-emerald-300" :
           result === "fail" ? "border-red-300" : "border-blue-400 shadow-md"
         }`}>
@@ -96,17 +96,17 @@ export function WebcamTest({ onNext }: WebcamTestProps) {
               <div>
                 <div className="flex items-center gap-2">
                   <Camera size={20} className={
-                    result === "pass" ? "text-emerald-500" : result === "fail" ? "text-red-500" : "text-blue-500"
+                    result === "pass" ? "text-emerald-400" : result === "fail" ? "text-red-400" : "text-blue-500"
                   } />
-                  <span className="text-lg text-slate-700">Webcam Preview Test</span>
+                  <span className="text-lg text-slate-200">Webcam Preview Test</span>
                 </div>
-                <p className="text-xs text-slate-400 mt-1">
+                <p className="text-xs text-slate-500 mt-1">
                   Open the preview window and verify the camera image is clear
                 </p>
               </div>
               {result && (
                 <div className={`flex items-center gap-1 text-sm px-3 py-1.5 rounded ${
-                  result === "pass" ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"
+                  result === "pass" ? "bg-emerald-500/15 text-emerald-300" : "bg-red-500/15 text-red-300"
                 }`}>
                   {result === "pass" ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
                   {result === "pass" ? "Passed" : "Failed"}
@@ -115,14 +115,14 @@ export function WebcamTest({ onNext }: WebcamTestProps) {
             </div>
 
             {error && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+              <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-sm text-red-300">
                 {error}
               </div>
             )}
 
             {!isTesting && !hasFinished && !result && !error && (
-              <div className="mb-5 p-3 bg-blue-50 rounded-lg">
-                <p className="text-sm text-blue-700">
+              <div className="mb-5 p-3 bg-blue-500/10 rounded-lg">
+                <p className="text-sm text-blue-300">
                   Click <strong>Start Test</strong> to open the webcam preview window.
                   Close the preview window when you are done inspecting the camera feed.
                 </p>
@@ -130,17 +130,17 @@ export function WebcamTest({ onNext }: WebcamTestProps) {
             )}
 
             {isTesting && (
-              <div className="mb-5 p-4 bg-slate-50 rounded-lg flex items-center gap-3">
+              <div className="mb-5 p-4 bg-[#0d1b30] rounded-lg flex items-center gap-3">
                 <Loader2 size={20} className="animate-spin text-blue-500" />
-                <p className="text-sm text-slate-700">
+                <p className="text-sm text-slate-200">
                   Webcam preview is open. Close the preview window to continue.
                 </p>
               </div>
             )}
 
             {!isTesting && hasFinished && !result && (
-              <div className="mb-5 p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
-                <p className="text-sm text-emerald-700">
+              <div className="mb-5 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
+                <p className="text-sm text-emerald-300">
                   Preview closed. Select <strong>Pass</strong> if the camera image was clear, otherwise <strong>Fail</strong>.
                 </p>
               </div>
@@ -152,7 +152,7 @@ export function WebcamTest({ onNext }: WebcamTestProps) {
                 disabled={isTesting}
                 className={`w-full flex items-center justify-center gap-2 py-3 rounded-lg text-sm transition-colors ${
                   isTesting
-                    ? "bg-slate-100 text-slate-400 cursor-not-allowed"
+                    ? "bg-[#16294a] text-slate-500 cursor-not-allowed"
                     : "bg-blue-600 hover:bg-blue-500 text-white"
                 }`}
               >
@@ -165,7 +165,7 @@ export function WebcamTest({ onNext }: WebcamTestProps) {
               <button
                 onClick={() => handleResult("pass")}
                 disabled={!hasFinished}
-                className="flex items-center justify-center gap-2 py-3 rounded-lg text-sm bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed text-white transition-colors"
+                className="flex items-center justify-center gap-2 py-3 rounded-lg text-sm bg-emerald-500 hover:bg-emerald-400 disabled:bg-[#16294a] disabled:text-slate-500 disabled:cursor-not-allowed text-white transition-colors"
               >
                 <CheckCircle2 size={16} />
                 Pass
@@ -173,7 +173,7 @@ export function WebcamTest({ onNext }: WebcamTestProps) {
               <button
                 onClick={() => handleResult("fail")}
                 disabled={!hasFinished}
-                className="flex items-center justify-center gap-2 py-3 rounded-lg text-sm bg-red-500 hover:bg-red-400 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed text-white transition-colors"
+                className="flex items-center justify-center gap-2 py-3 rounded-lg text-sm bg-red-500 hover:bg-red-400 disabled:bg-[#16294a] disabled:text-slate-500 disabled:cursor-not-allowed text-white transition-colors"
               >
                 <XCircle size={16} />
                 Fail
@@ -187,7 +187,7 @@ export function WebcamTest({ onNext }: WebcamTestProps) {
         <button
           onClick={onNext}
           disabled={!result}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white text-sm px-5 py-2.5 rounded-lg transition-colors"
+          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:bg-[#1c3f66] disabled:text-slate-500 disabled:cursor-not-allowed text-white text-sm px-5 py-2.5 rounded-lg transition-colors"
         >
           Continue to Keyboard Test
           <ChevronRight size={15} />

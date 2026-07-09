@@ -18,7 +18,7 @@ pub fn add_to_queue(
         conn.execute(
 
             "
-            INSERT INTO upload_queue
+            INSERT INTO tbl_pulse_upload_queue
             (
                 inspection_uuid,
                 status,

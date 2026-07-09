@@ -14,7 +14,7 @@ fn set_active_lot_name(
 {
     conn.execute(
         "
-        INSERT INTO settings (key, value)
+        INSERT INTO tbl_pulse_settings (key, value)
         VALUES ('active_lot', ?1)
         ON CONFLICT(key) DO UPDATE SET value = excluded.value
         ",
@@ -34,7 +34,7 @@ pub fn lot_name_exists(
 {
     let count: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM lots WHERE LOWER(lot_name) = LOWER(?1)",
+            "SELECT COUNT(*) FROM tbl_pulse_lots WHERE LOWER(lot_name) = LOWER(?1)",
             params![lot_name],
             |row| row.get(0),
         )
@@ -43,7 +43,7 @@ pub fn lot_name_exists(
     Ok(count > 0)
 }
 
-/// Insert a new LOT into the `lots` table (PRD §11.2). inspection_date is set to
+/// Insert a new LOT into the `tbl_pulse_lots` table (PRD §11.2). inspection_date is set to
 /// today, status to 'ACTIVE', and the LOT becomes the active LOT (settings).
 /// Rejects duplicate LOT names. Returns the new row id.
 pub fn insert_lot(
@@ -60,7 +60,7 @@ pub fn insert_lot(
 
     conn.execute(
         "
-        INSERT INTO lots
+        INSERT INTO tbl_pulse_lots
         (lot_name, customer, location, inspection_date, status)
         VALUES (?1, ?2, ?3, date('now','localtime'), 'ACTIVE')
         ",
@@ -73,7 +73,7 @@ pub fn insert_lot(
     Ok(id)
 }
 
-/// Fetch all rows from the `lots` table, newest first.
+/// Fetch all rows from the `tbl_pulse_lots` table, newest first.
 pub fn get_lots(
     conn: &Connection,
 )
@@ -83,7 +83,7 @@ pub fn get_lots(
         .prepare(
             "
             SELECT id, lot_name, customer, location, inspection_date, status
-            FROM lots
+            FROM tbl_pulse_lots
             ORDER BY id DESC
             "
         )
@@ -109,6 +109,39 @@ pub fn get_lots(
     Ok(lots)
 }
 
+/// Look up a single LOT's full row by id. Returns None if no such row exists.
+pub fn get_lot(
+    conn: &Connection,
+    id: i64,
+)
+-> Result<Option<LotRow>, String>
+{
+    let result = conn.query_row(
+        "
+        SELECT id, lot_name, customer, location, inspection_date, status
+        FROM tbl_pulse_lots
+        WHERE id = ?1
+        ",
+        params![id],
+        |row| {
+            Ok(LotRow {
+                id: row.get(0)?,
+                lot_name: row.get(1)?,
+                customer: row.get(2)?,
+                location: row.get(3)?,
+                inspection_date: row.get(4)?,
+                status: row.get(5)?,
+            })
+        },
+    );
+
+    match result {
+        Ok(lot) => Ok(Some(lot)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
 /// Look up a single LOT's name by id. Returns None if no such row exists.
 pub fn get_lot_name(
     conn: &Connection,
@@ -117,7 +150,7 @@ pub fn get_lot_name(
 -> Result<Option<String>, String>
 {
     let result = conn.query_row(
-        "SELECT lot_name FROM lots WHERE id = ?1",
+        "SELECT lot_name FROM tbl_pulse_lots WHERE id = ?1",
         params![id],
         |row| row.get::<_, String>(0),
     );
@@ -142,7 +175,7 @@ pub fn update_lot(
 {
     let duplicate: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM lots \
+            "SELECT COUNT(*) FROM tbl_pulse_lots \
              WHERE LOWER(lot_name) = LOWER(?1) AND id <> ?2",
             params![lot_name, id],
             |row| row.get(0),
@@ -155,7 +188,7 @@ pub fn update_lot(
 
     conn.execute(
         "
-        UPDATE lots
+        UPDATE tbl_pulse_lots
         SET lot_name = ?1, customer = ?2, location = ?3
         WHERE id = ?4
         ",
@@ -174,7 +207,7 @@ pub fn delete_lot(
 -> Result<(), String>
 {
     conn.execute(
-        "DELETE FROM lots WHERE id = ?1",
+        "DELETE FROM tbl_pulse_lots WHERE id = ?1",
         params![id],
     )
     .map_err(|e| e.to_string())?;
@@ -191,7 +224,7 @@ pub fn set_lot_status(
 -> Result<(), String>
 {
     conn.execute(
-        "UPDATE lots SET status = ?1 WHERE id = ?2",
+        "UPDATE tbl_pulse_lots SET status = ?1 WHERE id = ?2",
         params![status, id],
     )
     .map_err(|e| e.to_string())?;
@@ -216,7 +249,7 @@ pub fn select_lot(
 }
 
 /// Create a LOT from a full Lot struct (used by non-UI/CLI flows). Inserts into
-/// `lots` and records it as the active LOT.
+/// `tbl_pulse_lots` and records it as the active LOT.
 pub fn create_lot(
     conn: &Connection,
     lot: &Lot,
@@ -224,7 +257,7 @@ pub fn create_lot(
 {
     conn.execute(
         "
-        INSERT INTO lots
+        INSERT INTO tbl_pulse_lots
         (lot_name, customer, location, inspection_date, status)
         VALUES (?1, ?2, ?3, ?4, ?5)
         ",
@@ -255,7 +288,7 @@ pub fn get_active_lot(
                 location,
                 inspection_date,
                 status
-            FROM lots
+            FROM tbl_pulse_lots
             WHERE status='ACTIVE'
             LIMIT 1
             "

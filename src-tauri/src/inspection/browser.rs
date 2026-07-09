@@ -19,7 +19,7 @@ pub fn show_all(
             SELECT
                 id,
                 json_data
-            FROM inspections
+            FROM tbl_pulse_inspections
             ORDER BY id DESC
             "
 

@@ -1,6 +1,7 @@
 import { useEffect, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useInspection } from "../../context/InspectionContext";
+import { normalizeCapacity } from "../../utils/capacity";
 
 interface HardwareInventoryProps {
   onNext: () => void;
@@ -16,30 +17,30 @@ function prettyKey(key: string) {
 
 function renderValue(value: any): ReactNode {
   if (value === null || value === undefined || value === "") {
-    return <span className="text-slate-400">N/A</span>;
+    return <span className="text-slate-500">N/A</span>;
   }
 
   if (Array.isArray(value)) {
     if (value.length === 0) {
-      return <span className="text-slate-400">No entries</span>;
+      return <span className="text-slate-500">No entries</span>;
     }
 
     return (
       <div className="space-y-3">
         {value.map((entry, idx) => (
-          <div key={idx} className="rounded-lg bg-slate-50 p-3">
+          <div key={idx} className="rounded-lg bg-[#0d1b30] p-3">
             <div className="text-[11px] text-slate-500 mb-2">Item {idx + 1}</div>
             {typeof entry === "object" && entry !== null ? (
               <div className="grid gap-1">
                 {Object.entries(entry).map(([field, fieldValue]) => (
                   <div key={field} className="grid grid-cols-[200px_1fr] gap-4 py-0.5">
                     <div className="text-[11px] text-slate-500">{prettyKey(field)}</div>
-                    <div className="text-sm text-slate-800">{renderValue(fieldValue)}</div>
+                    <div className="text-sm text-slate-100">{renderValue(fieldValue)}</div>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="text-sm text-slate-800">{String(entry)}</div>
+              <div className="text-sm text-slate-100">{String(entry)}</div>
             )}
           </div>
         ))}
@@ -50,7 +51,7 @@ function renderValue(value: any): ReactNode {
   if (typeof value === "object") {
     const entries = Object.entries(value);
     if (entries.length === 0) {
-      return <span className="text-slate-400">No data</span>;
+      return <span className="text-slate-500">No data</span>;
     }
 
     return (
@@ -58,7 +59,7 @@ function renderValue(value: any): ReactNode {
         {entries.map(([field, fieldValue]) => (
           <div key={field} className="grid grid-cols-[200px_1fr] gap-4 py-0.5">
             <div className="text-[11px] text-slate-500">{prettyKey(field)}</div>
-            <div className="text-sm text-slate-800">{renderValue(fieldValue)}</div>
+            <div className="text-sm text-slate-100">{renderValue(fieldValue)}</div>
           </div>
         ))}
       </div>
@@ -72,12 +73,12 @@ function renderSection(title: string, value: any) {
   return (
     <section key={title} className="space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-slate-800">{title}</h2>
+        <h2 className="text-sm font-semibold text-slate-100">{title}</h2>
         <span className="text-xs uppercase tracking-[0.2em] text-slate-500">
           {value ? "Collected" : "Missing"}
         </span>
       </div>
-      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+      <div className="rounded-2xl border border-[#1c3f66] bg-[#0d1b30] p-4">
         {renderValue(value)}
       </div>
     </section>
@@ -87,11 +88,25 @@ function renderSection(title: string, value: any) {
 export function HardwareInventory({ onNext, isExecutionActive }: HardwareInventoryProps) {
   const { data, setData } = useInspection();
 
+  // Display-only: mirror the System Scan screen's Storage "Capacity" logic
+  // (prefer a pre-computed capacity_gb, otherwise normalize the raw size_gb
+  // into a marketed capacity like "512 GB") so this screen shows the same
+  // size figure instead of the raw GiB number. The underlying data.storageInfo
+  // used for saving/reporting is untouched.
+  const storageInfoDisplay = Array.isArray(data.storageInfo)
+    ? data.storageInfo.map((d: any) => ({
+        ...d,
+        size_gb: d
+          ? d.capacity_gb || normalizeCapacity(d.size_gb)
+          : d?.size_gb,
+      }))
+    : data.storageInfo;
+
   const sections = [
     { title: "System Info", value: data.systemInfo },
     { title: "CPU Info", value: data.cpuInfo },
     { title: "Memory Info", value: data.memoryInfo },
-    { title: "Storage Info", value: data.storageInfo },
+    { title: "Storage Info", value: storageInfoDisplay },
     { title: "Battery Info", value: data.batteryInfo },
     { title: "Network Info", value: data.networkInfo },
     { title: "Display Info", value: data.displayInfo },
@@ -156,19 +171,19 @@ export function HardwareInventory({ onNext, isExecutionActive }: HardwareInvento
   }, [onNext, isExecutionActive]);
 
   return (
-    <div className="space-y-5">
+    <div className="-m-6 p-6 min-h-[calc(100vh-6rem)] bg-[#0a1626] space-y-5">
       <div className="flex items-center justify-between gap-6">
         <div>
-          <h1 className="text-slate-800">Hardware Inventory</h1>
+          <h1 className="text-slate-100">Hardware Inventory</h1>
           <p className="text-sm text-slate-500 mt-0.5">
             All collected hardware details from the system scan are shown below.
           </p>
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-        <div className="px-4 py-4 bg-slate-50 border-b border-slate-200">
-          <p className="text-sm text-slate-600">
+      <div className="bg-[#0f1e35] rounded-2xl border border-[#1c3f66] overflow-hidden">
+        <div className="px-4 py-4 bg-[#0d1b30] border-b border-[#1c3f66]">
+          <p className="text-sm text-slate-300">
             Scroll to review every detected hardware property, including values not shown
             on the summary cards.
           </p>

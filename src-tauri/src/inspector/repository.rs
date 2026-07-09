@@ -55,6 +55,17 @@ fn employee_id_taken(
     })
 }
 
+/// Look up a single inspector by id. Returns None if no such id exists.
+pub fn get_inspector(
+    conn: &Connection,
+    id: i64,
+)
+-> Result<Option<Inspector>, String>
+{
+    let list = load_all(conn)?;
+    Ok(list.into_iter().find(|i| i.id == id))
+}
+
 /// Fetch all inspectors, newest first.
 pub fn get_inspectors(
     conn: &Connection,

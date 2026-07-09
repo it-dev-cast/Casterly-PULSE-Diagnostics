@@ -7,6 +7,8 @@ import {
   Laptop,
 } from "lucide-react";
 import { useInspection } from "../context/InspectionContext";
+import { WifiMenu } from "./WifiMenu";
+import { PowerButton } from "./PowerButton";
 import pulseLogo from "../../assets/pulse_logo.png";
 
 interface HeaderProps {
@@ -20,8 +22,6 @@ interface HeaderProps {
 }
 
 export function Header({ onNavigate, currentScreen, onSaveDraft, onSaveInspection, isInspectionActive = false, lotName = "", inspectorName = "" }: HeaderProps) {
-  const [elapsed, setElapsed] = useState(0);
-
   // Read the live scan results straight from the inspection context so the
   // header updates as soon as the System Scan populates them. Mirror the scan
   // card's behaviour: show "Scanning..." until a real value arrives (e.g. in
@@ -30,10 +30,20 @@ export function Header({ onNavigate, currentScreen, onSaveDraft, onSaveInspectio
   const serialNumber: string = data.systemInfo?.serial_number || "Scanning...";
   const deviceModel: string = data.systemInfo?.model || "Scanning...";
 
+  // Derived from data.inspectionStartTime (reset by resetInspection() every
+  // time a new inspection starts) rather than a local mount-time counter, so
+  // the timer restarts at 00:00 for each new device instead of counting up
+  // across the whole app session.
+  const [now, setNow] = useState(() => Date.now());
+
   useEffect(() => {
-    const interval = setInterval(() => setElapsed((e) => e + 1), 1000);
+    const interval = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(interval);
   }, []);
+
+  const elapsed = data.inspectionStartTime
+    ? Math.max(0, Math.floor((now - data.inspectionStartTime) / 1000))
+    : 0;
 
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60);
@@ -91,10 +101,12 @@ export function Header({ onNavigate, currentScreen, onSaveDraft, onSaveInspectio
 
       {/* Right — Timer + Actions */}
       <div className="flex items-center gap-2 px-4 shrink-0">
+        <WifiMenu />
         <div className="flex items-center gap-1.5 bg-[#123a63] border border-[#1c3f66] rounded px-3 py-1.5">
           <Timer size={14} strokeWidth={2.5} className="text-blue-300" />
           <span className="text-white font-semibold font-mono text-sm tracking-widest">{formatTime(elapsed)}</span>
         </div>
+        <PowerButton />
       </div>
     </header>
   );

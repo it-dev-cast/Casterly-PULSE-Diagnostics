@@ -102,7 +102,7 @@ export function WorkflowSidebar({
       </div>
 
       {/* Workflow steps */}
-      <div className="flex-1 overflow-y-auto py-1">
+      <div className="flex-1 min-h-0 overflow-y-auto py-1 sidebar-scroll">
         <div className="px-3 py-2">
           <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Inspection Workflow</span>
         </div>
@@ -111,15 +111,23 @@ export function WorkflowSidebar({
           const StatusIcon = cfg.icon;
           const StageIcon = stage.icon;
           const isActive = stage.id === currentStage;
+          // A stage hasn't been reached yet until it's at least "active"
+          // (in progress) — "pending" stages are locked so the user can't
+          // jump ahead to a screen with no real data collected yet.
+          const isLocked = stage.status === "pending";
 
           return (
             <button
               key={stage.id}
               onClick={() => onStageClick(stage.id)}
+              disabled={isLocked}
+              title={isLocked ? "Complete the previous steps first" : undefined}
               className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-sm font-semibold text-white transition-colors relative ${
                 isActive
                   ? "bg-blue-900/40"
-                  : "hover:bg-[#123a63]/60"
+                  : isLocked
+                    ? "opacity-40 cursor-not-allowed"
+                    : "hover:bg-[#123a63]/60"
               }`}
             >
               {isActive && (
@@ -145,10 +153,14 @@ export function WorkflowSidebar({
   );
 }
 
+// All stages start "pending" (round, unstarted icon). App.tsx's
+// startInspection() is what flips the first stage to "active" once the
+// user actually clicks "Start New Inspection" — nothing here should imply
+// progress before that happens.
 export const defaultStages: WorkflowStage[] = [
-  { id: "system-scan", label: "System Scan", icon: Monitor, status: "passed" },
-  { id: "hardware-inventory", label: "Hardware Inventory", icon: HardDrive, status: "passed" },
-  { id: "manual-grading", label: "Manual Grading", icon: ClipboardCheck, status: "active" },
+  { id: "system-scan", label: "System Scan", icon: Monitor, status: "pending" },
+  { id: "hardware-inventory", label: "Hardware Inventory", icon: HardDrive, status: "pending" },
+  { id: "manual-grading", label: "Manual Grading", icon: ClipboardCheck, status: "pending" },
   { id: "speaker-test", label: "Speaker Test", icon: Volume2, status: "pending" },
   { id: "webcam-test", label: "Webcam Test", icon: Camera, status: "pending" },
   { id: "keyboard-test", label: "Keyboard Test", icon: Keyboard, status: "pending" },

@@ -94,9 +94,9 @@ export function InspectionSaveConfirmation({
   const isComplete = completedCount === totalCount;
 
   return (
-    <div className="space-y-6">
+    <div className="-m-6 p-6 min-h-[calc(100vh-6rem)] bg-[#0a1626] space-y-6">
       <div>
-        <h1 className="text-slate-800">Ready To Save Inspection</h1>
+        <h1 className="text-slate-100">Ready To Save Inspection</h1>
         <p className="text-sm text-slate-500 mt-0.5">
           Review checklist before saving the inspection record
         </p>
@@ -104,28 +104,28 @@ export function InspectionSaveConfirmation({
 
       {/* Status banner */}
       {isComplete ? (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+        <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-4">
           <div className="flex items-start gap-3">
-            <CheckCircle2 size={20} className="text-emerald-600 shrink-0 mt-0.5" />
+            <CheckCircle2 size={20} className="text-emerald-400 shrink-0 mt-0.5" />
             <div>
-              <div className="text-sm text-emerald-900 font-medium">
+              <div className="text-sm text-emerald-200 font-medium">
                 All Steps Completed
               </div>
-              <div className="text-xs text-emerald-700 mt-0.5">
+              <div className="text-xs text-emerald-300 mt-0.5">
                 All inspection steps have been completed successfully. The inspection is ready to be saved.
               </div>
             </div>
           </div>
         </div>
       ) : (
-        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+        <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-4">
           <div className="flex items-start gap-3">
-            <AlertCircle size={20} className="text-orange-600 shrink-0 mt-0.5" />
+            <AlertCircle size={20} className="text-orange-400 shrink-0 mt-0.5" />
             <div>
-              <div className="text-sm text-orange-900 font-medium">
+              <div className="text-sm text-orange-200 font-medium">
                 Incomplete Inspection
               </div>
-              <div className="text-xs text-orange-700 mt-0.5">
+              <div className="text-xs text-orange-300 mt-0.5">
                 Some inspection steps are pending. You can save as draft or complete all steps before saving.
               </div>
             </div>
@@ -134,14 +134,14 @@ export function InspectionSaveConfirmation({
       )}
 
       {/* Inspection Checklist */}
-      <div className="bg-white rounded-lg border border-slate-200">
-        <div className="p-4 border-b border-slate-200">
-          <h3 className="text-slate-700">Inspection Checklist</h3>
+      <div className="bg-[#0f1e35] rounded-lg border border-[#1c3f66]">
+        <div className="p-4 border-b border-[#1c3f66]">
+          <h3 className="text-slate-200">Inspection Checklist</h3>
           <p className="text-xs text-slate-500 mt-0.5">
             {completedCount} of {totalCount} steps completed
           </p>
           <div className="mt-3">
-            <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+            <div className="h-2 bg-[#16294a] rounded-full overflow-hidden">
               <div
                 className={`h-full rounded-full ${
                   isComplete ? "bg-emerald-500" : "bg-blue-500"
@@ -161,42 +161,42 @@ export function InspectionSaveConfirmation({
                   key={item.id}
                   className={`flex items-center gap-3 p-3 rounded-lg border ${
                     item.status === "completed"
-                      ? "bg-emerald-50 border-emerald-200"
+                      ? "bg-emerald-500/10 border-emerald-500/30"
                       : item.status === "skipped"
-                      ? "bg-slate-50 border-slate-200"
-                      : "bg-orange-50 border-orange-200"
+                      ? "bg-[#0d1b30] border-[#1c3f66]"
+                      : "bg-orange-500/10 border-orange-500/30"
                   }`}
                 >
                   <div
                     className={`w-8 h-8 rounded-lg flex items-center justify-center ${
                       item.status === "completed"
-                        ? "bg-emerald-100"
+                        ? "bg-emerald-500/15"
                         : item.status === "skipped"
-                        ? "bg-slate-100"
-                        : "bg-orange-100"
+                        ? "bg-[#16294a]"
+                        : "bg-orange-500/15"
                     }`}
                   >
                     <Icon
                       size={16}
                       className={
                         item.status === "completed"
-                          ? "text-emerald-600"
+                          ? "text-emerald-400"
                           : item.status === "skipped"
-                          ? "text-slate-400"
-                          : "text-orange-600"
+                          ? "text-slate-500"
+                          : "text-orange-400"
                       }
                     />
                   </div>
                   <div className="flex-1">
-                    <div className="text-sm text-slate-700">{item.label}</div>
+                    <div className="text-sm text-slate-200">{item.label}</div>
                     {item.status === "completed" && (
-                      <div className="flex items-center gap-1 text-xs text-emerald-600 mt-0.5">
+                      <div className="flex items-center gap-1 text-xs text-emerald-400 mt-0.5">
                         <CheckCircle2 size={10} />
                         Complete
                       </div>
                     )}
                     {item.status === "pending" && (
-                      <div className="flex items-center gap-1 text-xs text-orange-600 mt-0.5">
+                      <div className="flex items-center gap-1 text-xs text-orange-400 mt-0.5">
                         <Circle size={10} />
                         Pending
                       </div>
@@ -210,30 +210,30 @@ export function InspectionSaveConfirmation({
       </div>
 
       {/* Device Summary */}
-      <div className="bg-white rounded-lg border border-slate-200 p-4">
-        <h3 className="text-slate-700 mb-3">Device Summary</h3>
+      <div className="bg-[#0f1e35] rounded-lg border border-[#1c3f66] p-4">
+        <h3 className="text-slate-200 mb-3">Device Summary</h3>
         <div className="grid grid-cols-4 gap-4">
           <div>
             <div className="text-xs text-slate-500">Serial Number</div>
-            <div className="text-sm text-slate-700 font-mono mt-0.5">
+            <div className="text-sm text-slate-200 font-mono mt-0.5">
               {data.systemInfo?.serial_number || "—"}
             </div>
           </div>
           <div>
             <div className="text-xs text-slate-500">Model</div>
-            <div className="text-sm text-slate-700 mt-0.5">
+            <div className="text-sm text-slate-200 mt-0.5">
               {data.systemInfo?.model || "—"}
             </div>
           </div>
           <div>
             <div className="text-xs text-slate-500">LOT</div>
-            <div className="text-sm text-slate-700 mt-0.5">
+            <div className="text-sm text-slate-200 mt-0.5">
               {session.lotName || "—"}
             </div>
           </div>
           <div>
             <div className="text-xs text-slate-500">Inspector</div>
-            <div className="text-sm text-slate-700 mt-0.5">
+            <div className="text-sm text-slate-200 mt-0.5">
               {session.inspectorName || "—"}
             </div>
           </div>
@@ -259,17 +259,17 @@ export function InspectionSaveConfirmation({
         </button>
         <button
           onClick={onCancel}
-          className="px-6 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+          className="px-6 text-sm text-slate-300 hover:bg-[#1c3457] rounded-lg transition-colors"
         >
           Cancel
         </button>
       </div>
 
       {/* Additional info */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+      <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
         <div className="flex items-start gap-3">
-          <AlertCircle size={16} className="text-blue-600 shrink-0 mt-0.5" />
-          <div className="text-xs text-blue-700">
+          <AlertCircle size={16} className="text-blue-400 shrink-0 mt-0.5" />
+          <div className="text-xs text-blue-300">
             <strong>Note:</strong> Saved inspections will be added to the upload queue and synced
             to the cloud when internet connection is available. Draft inspections can be completed later.
           </div>

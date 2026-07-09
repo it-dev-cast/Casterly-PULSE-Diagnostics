@@ -179,7 +179,7 @@ fn upload_hardware_categories(
             ("board_serial", g(&system, "/board_serial")),
             ("bios_version", g(&system, "/bios_version")),
         ]);
-        post_upsert(client, base_url, key, "system_info", "uuid,serial_number", &row)?;
+        post_upsert(client, base_url, key, "tbl_pulse_system_info", "uuid,serial_number", &row)?;
     }
 
     let cpu = g(inv, "/cpu");
@@ -202,7 +202,7 @@ fn upload_hardware_categories(
             ("virtualization", g(&cpu, "/virtualization")),
             ("hyper_threading", g(&cpu, "/hyper_threading")),
         ]);
-        post_upsert(client, base_url, key, "cpu_info", "uuid,serial_number", &row)?;
+        post_upsert(client, base_url, key, "tbl_pulse_cpu_info", "uuid,serial_number", &row)?;
     }
 
     let battery = g(inv, "/battery");
@@ -222,7 +222,7 @@ fn upload_hardware_categories(
             ("voltage_mv", g(&battery, "/voltage_mv")),
             ("health_percent", g(&battery, "/health_percent")),
         ]);
-        post_upsert(client, base_url, key, "battery_info", "uuid,serial_number", &row)?;
+        post_upsert(client, base_url, key, "tbl_pulse_battery_info", "uuid,serial_number", &row)?;
     }
 
     let network = g(inv, "/network");
@@ -238,7 +238,7 @@ fn upload_hardware_categories(
             ("ethernet_mac", g(&network, "/ethernet_mac")),
             ("bluetooth", g(&network, "/bluetooth")),
         ]);
-        post_upsert(client, base_url, key, "network_info", "uuid,serial_number", &row)?;
+        post_upsert(client, base_url, key, "tbl_pulse_network_info", "uuid,serial_number", &row)?;
     }
 
     let display = g(inv, "/display");
@@ -252,7 +252,7 @@ fn upload_hardware_categories(
             ("resolution", g(&display, "/resolution")),
             ("size_inches", g(&display, "/size_inches")),
         ]);
-        post_upsert(client, base_url, key, "display_info", "uuid,serial_number", &row)?;
+        post_upsert(client, base_url, key, "tbl_pulse_display_info", "uuid,serial_number", &row)?;
     }
 
     let camera = g(inv, "/camera");
@@ -265,7 +265,7 @@ fn upload_hardware_categories(
             ("device", g(&camera, "/device")),
             ("status", g(&camera, "/status")),
         ]);
-        post_upsert(client, base_url, key, "camera_info", "uuid,serial_number", &row)?;
+        post_upsert(client, base_url, key, "tbl_pulse_camera_info", "uuid,serial_number", &row)?;
     }
 
     let audio = g(inv, "/audio");
@@ -278,7 +278,7 @@ fn upload_hardware_categories(
             ("mic_type", g(&audio, "/mic_type")),
             ("jack_type", g(&audio, "/jack_type")),
         ]);
-        post_upsert(client, base_url, key, "audio_info", "uuid,serial_number", &row)?;
+        post_upsert(client, base_url, key, "tbl_pulse_audio_info", "uuid,serial_number", &row)?;
     }
 
     if let Value::Array(modules) = g(inv, "/memory") {
@@ -318,7 +318,7 @@ fn upload_hardware_categories(
                 client,
                 base_url,
                 key,
-                "memory_info",
+                "tbl_pulse_memory_info",
                 "uuid,serial_number,module_index",
                 &Value::Array(rows),
             )?;
@@ -362,7 +362,7 @@ fn upload_hardware_categories(
                 client,
                 base_url,
                 key,
-                "storage_info",
+                "tbl_pulse_storage_info",
                 "uuid,serial_number,drive_index",
                 &Value::Array(rows),
             )?;
@@ -398,7 +398,7 @@ fn upload_hardware_categories(
                 client,
                 base_url,
                 key,
-                "gpu_info",
+                "tbl_pulse_gpu_info",
                 "uuid,serial_number,gpu_index",
                 &Value::Array(rows),
             )?;
@@ -437,6 +437,7 @@ fn upload_one(
     let inspections_row = obj(vec![
         ("uuid", s(uuid)),
         ("usb_id", g(&v, "/usb_id")),
+        ("cly_no", g(&v, "/cly_no")),
         ("lot_name", g(&v, "/lot_name")),
         ("inspector", g(&v, "/inspector")),
         ("serial_number", s(&serial)),
@@ -448,7 +449,7 @@ fn upload_one(
         ("uploaded", Value::Bool(true)),
         ("json_data", v.clone()),
     ]);
-    post_upsert(client, base_url, key, "inspections", "uuid", &inspections_row)?;
+    post_upsert(client, base_url, key, "tbl_pulse_inspections", "uuid", &inspections_row)?;
 
     // 2) devices — normalized identity (always upserted)
     let device_row = obj(vec![
@@ -457,7 +458,7 @@ fn upload_one(
         ("model", s(model)),
         ("dmi_uuid", s(dmi_uuid)),
     ]);
-    post_upsert(client, base_url, key, "devices", "serial_number", &device_row)?;
+    post_upsert(client, base_url, key, "tbl_pulse_devices", "serial_number", &device_row)?;
 
     // 3) hardware_specs — System Scan, one JSONB column per collector
     let hw_row = obj(vec![
@@ -475,7 +476,7 @@ fn upload_one(
         ("audio", g(&inv, "/audio")),
         ("camera", g(&inv, "/camera")),
     ]);
-    replace_child(client, base_url, key, "hardware_specs", uuid, &hw_row)?;
+    replace_child(client, base_url, key, "tbl_pulse_hardware_specs", uuid, &hw_row)?;
 
     // 3b) mirror the same 10 categories into their own normalized tables
     // (system_info, cpu_info, memory_info, ...) alongside the JSONB blob
@@ -501,7 +502,7 @@ fn upload_one(
         ("touchpad_status", g(&v, "/grading/touchpad_status")),
         ("remarks", g(&v, "/grading/remarks")),
     ]);
-    replace_child(client, base_url, key, "grading_results", uuid, &gr_row)?;
+    replace_child(client, base_url, key, "tbl_pulse_grading_results", uuid, &gr_row)?;
 
     // 5) test_results
     let tr_row = obj(vec![
@@ -514,7 +515,7 @@ fn upload_one(
         ("touchpad_test", g(&v, "/touchpad_test/result")),
         ("battery_assessment", g(&v, "/battery_assessment/result")),
     ]);
-    replace_child(client, base_url, key, "test_results", uuid, &tr_row)?;
+    replace_child(client, base_url, key, "tbl_pulse_test_results", uuid, &tr_row)?;
 
     Ok(())
 }
@@ -534,8 +535,8 @@ pub fn sync_pending(conn: &Connection) -> Result<SyncSummary, String> {
         let mut stmt = conn
             .prepare(
                 "SELECT q.id, q.inspection_uuid, i.json_data
-                 FROM upload_queue q
-                 JOIN inspections i ON i.uuid = q.inspection_uuid
+                 FROM tbl_pulse_upload_queue q
+                 JOIN tbl_pulse_inspections i ON i.uuid = q.inspection_uuid
                  WHERE q.status = 'PENDING'
                  ORDER BY q.id ASC",
             )
@@ -589,11 +590,11 @@ pub fn sync_pending(conn: &Connection) -> Result<SyncSummary, String> {
             Ok(()) => {
                 let now = Local::now().format("%d/%m/%Y %H:%M:%S").to_string();
                 let _ = conn.execute(
-                    "UPDATE upload_queue SET status='UPLOADED', uploaded_at=?1 WHERE id=?2",
+                    "UPDATE tbl_pulse_upload_queue SET status='UPLOADED', uploaded_at=?1 WHERE id=?2",
                     params![now, qid],
                 );
                 let _ = conn.execute(
-                    "UPDATE inspections SET uploaded=1 WHERE uuid=?1",
+                    "UPDATE tbl_pulse_inspections SET uploaded=1 WHERE uuid=?1",
                     params![uuid],
                 );
                 uploaded += 1;
@@ -602,7 +603,7 @@ pub fn sync_pending(conn: &Connection) -> Result<SyncSummary, String> {
                 eprintln!("Supabase upload failed for {}: {}", uuid, e);
                 last_error = e.clone();
                 let _ = conn.execute(
-                    "UPDATE upload_queue SET status='FAILED', retry_count=retry_count+1 WHERE id=?1",
+                    "UPDATE tbl_pulse_upload_queue SET status='FAILED', retry_count=retry_count+1 WHERE id=?1",
                     params![qid],
                 );
                 failed += 1;

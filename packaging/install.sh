@@ -6,7 +6,10 @@
 #
 # Run this INSIDE the Cubic "Customize" chroot terminal, after copying the
 # build artifacts into the chroot's filesystem (via Cubic's file copy feature,
-# or plain `cp -r` if you have a shell into the chroot).
+# or plain `cp -r` if you have a shell into the chroot). This whole
+# packaging/ directory (install.sh + casterly-pulse.service + plymouth/)
+# should be copied in as one unit -- the plymouth/casterly/ theme files are
+# read from alongside this script (see SCRIPT_DIR below), not from SOURCE_DIR.
 #
 # Expects, at $SOURCE_DIR (default: /root/casterly-pulse-build):
 #   udiag4                     -- built on the host with:
@@ -33,11 +36,29 @@
 #   2. Copies the app into /opt/casterly/pulse/.
 #   3. Installs + enables casterly-pulse.service (see casterly-pulse.service
 #      in this same directory) so the app auto-launches on graphical login.
-#   4. Configures GDM3 auto-login for the "ubuntu" user.
+#   4. Installs the passwordless-sudo rule (sudoers.d/pulse-collectors) so the
+#      hardware collectors and power-off button never hit an interactive
+#      password/polkit prompt stranded behind the kiosk window.
+#   5. Installs a Casterly-branded Plymouth boot theme (plymouth/casterly/) in
+#      place of the stock Ubuntu logo, and rebuilds the initramfs to use it.
+#   6. Sets GRUB_TIMEOUT=0 / hidden + a quiet kernel cmdline so the installed
+#      system's own boot menu never flashes on screen.
+#   7. Blanks the GNOME/GDM wallpaper to solid navy so there's no desktop or
+#      login-screen flash in the gap between login and Pulse's window
+#      appearing.
+#   8. Configures GDM3 auto-login for the "ubuntu" user.
 #
-# Auto-login (step 4) + the auto-launching service (step 3) together are what
+# Auto-login (step 8) + the auto-launching service (step 3) together are what
 # make "insert the pen drive" (i.e. boot the target machine from this USB)
 # result in Pulse opening automatically with zero technician interaction.
+# Steps 5-7 are what make everything *before* that -- GRUB, Plymouth, the
+# login screen -- show Casterly branding (or nothing) instead of Ubuntu's.
+#
+# IMPORTANT: steps 4-6 only cover the installed-system configuration baked
+# into the squashfs. The ISO's own outer live-boot menu (the "Try/Install
+# Ubuntu" screen from boot/grub/grub.cfg at the top of the ISO, outside this
+# chroot) must still be hidden manually inside Cubic itself -- see
+# packaging/README.md, "Branded silent boot".
 #
 # Run as root -- you already are, inside the Cubic chroot.
 
@@ -80,6 +101,87 @@ echo "==> Installing systemd service"
 cp "${SCRIPT_DIR}/casterly-pulse.service" "/etc/systemd/system/${SERVICE_NAME}"
 systemctl enable "${SERVICE_NAME}"
 
+echo "==> Installing passwordless sudo rule for hardware collectors + power-off"
+cp "${SCRIPT_DIR}/sudoers.d/pulse-collectors" /etc/sudoers.d/pulse-collectors
+chown root:root /etc/sudoers.d/pulse-collectors
+chmod 0440 /etc/sudoers.d/pulse-collectors
+visudo -cf /etc/sudoers.d/pulse-collectors
+
+echo "==> Installing Casterly boot splash (replaces the stock Ubuntu Plymouth theme)"
+PLYMOUTH_THEME_DIR=/usr/share/plymouth/themes/casterly
+mkdir -p "${PLYMOUTH_THEME_DIR}"
+cp "${SCRIPT_DIR}/plymouth/casterly/casterly.plymouth" "${PLYMOUTH_THEME_DIR}/"
+cp "${SCRIPT_DIR}/plymouth/casterly/casterly.script" "${PLYMOUTH_THEME_DIR}/"
+cp "${SCRIPT_DIR}/plymouth/casterly/logo.png" "${PLYMOUTH_THEME_DIR}/"
+# -R rebuilds the initramfs with the new theme baked in; without it the
+# theme is registered but the boot-time initramfs still ships the old one.
+if command -v plymouth-set-default-theme >/dev/null 2>&1; then
+  plymouth-set-default-theme -R casterly
+else
+  echo "WARNING: plymouth-set-default-theme not found -- install the 'plymouth' and" >&2
+  echo "         'plymouth-themes' packages, then re-run: plymouth-set-default-theme -R casterly" >&2
+fi
+
+echo "==> Silencing the GRUB boot menu (quiet, hidden timeout, no cursor blink)"
+GRUB_DEFAULT_FILE=/etc/default/grub
+if [ -f "${GRUB_DEFAULT_FILE}" ]; then
+  cp "${GRUB_DEFAULT_FILE}" "${GRUB_DEFAULT_FILE}.pre-casterly.bak"
+  sed -i 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=0/' "${GRUB_DEFAULT_FILE}"
+  if grep -q '^GRUB_TIMEOUT_STYLE=' "${GRUB_DEFAULT_FILE}"; then
+    sed -i 's/^GRUB_TIMEOUT_STYLE=.*/GRUB_TIMEOUT_STYLE=hidden/' "${GRUB_DEFAULT_FILE}"
+  else
+    echo 'GRUB_TIMEOUT_STYLE=hidden' >> "${GRUB_DEFAULT_FILE}"
+  fi
+  sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT="quiet splash loglevel=0 vt.global_cursor_default=0"/' "${GRUB_DEFAULT_FILE}"
+  update-grub
+else
+  echo "WARNING: ${GRUB_DEFAULT_FILE} not found -- set GRUB_TIMEOUT=0, GRUB_TIMEOUT_STYLE=hidden" >&2
+  echo "         and GRUB_CMDLINE_LINUX_DEFAULT=\"quiet splash loglevel=0 vt.global_cursor_default=0\" manually, then run update-grub." >&2
+fi
+# NOTE: this only silences the *installed-system* grub config baked into the
+# squashfs. The outer live-boot menu (the "Try/Install Ubuntu" screen defined
+# in the ISO's own boot/grub/grub.cfg) lives outside this chroot and cannot be
+# edited from here -- see packaging/README.md "Branded silent boot" for the
+# manual step to do inside Cubic's own UI before generating the ISO.
+
+echo "==> Suppressing the desktop flash between login and Pulse launching"
+mkdir -p /etc/dconf/profile
+cat > /etc/dconf/profile/user <<'EOF'
+user-db:user
+system-db:local
+EOF
+mkdir -p /etc/dconf/db/local.d
+cat > /etc/dconf/db/local.d/00-casterly-kiosk <<'EOF'
+[org/gnome/desktop/background]
+picture-uri=''
+picture-uri-dark=''
+primary-color='#0a1626'
+secondary-color='#0a1626'
+color-shading-type='solid'
+
+[org/gnome/desktop/screensaver]
+picture-uri=''
+primary-color='#0a1626'
+secondary-color='#0a1626'
+color-shading-type='solid'
+EOF
+dconf update
+# GDM's own greeter background/logo (path may vary slightly by Ubuntu
+# release -- verify with `dpkg -L gdm3 | grep dconf` on the build image).
+mkdir -p /etc/gdm3
+cat > /etc/gdm3/greeter.dconf-defaults <<'EOF'
+[org/gnome/login-screen]
+logo='/opt/casterly/pulse/resources/casterly_logo.png'
+
+[org/gnome/desktop/background]
+picture-uri=''
+primary-color='#0a1626'
+secondary-color='#0a1626'
+color-shading-type='solid'
+EOF
+mkdir -p "${INSTALL_DIR}/resources"
+cp "${SCRIPT_DIR}/plymouth/casterly/logo.png" "${INSTALL_DIR}/resources/casterly_logo.png"
+
 echo "==> Configuring GDM3 auto-login for user '${AUTOLOGIN_USER}'"
 GDM_CONF=/etc/gdm3/custom.conf
 if [ -f "${GDM_CONF}" ]; then
@@ -95,8 +197,11 @@ else
   echo "  AutomaticLogin = ${AUTOLOGIN_USER}"
 fi
 
-echo "==> Done. Casterly Pulse will auto-launch on the next graphical login."
+echo "==> Done. Casterly Pulse will auto-launch on the next graphical login,"
+echo "    with the Casterly splash shown in place of the Ubuntu boot logo."
 echo "    (Note: on a live/dd'd ISO without a persistence partition, anything"
 echo "    written to ${INSTALL_DIR} at runtime -- udiag.db, exports/ -- will"
 echo "    not survive a reboot unless the ISO build sets up persistent"
 echo "    storage for that path.)"
+echo "    REMINDER: hide the ISO's own outer boot menu inside Cubic before"
+echo "    generating the ISO -- see packaging/README.md, 'Branded silent boot'."

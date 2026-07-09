@@ -102,7 +102,7 @@ interface ActiveLOTSummaryProps {
 function UploadBadge({ status }: { status: UploadStatus }) {
   if (status === "uploaded") {
     return (
-      <span className="inline-flex items-center gap-1 text-xs text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
+      <span className="inline-flex items-center gap-1 text-xs text-emerald-300 bg-emerald-500/15 px-2 py-0.5 rounded">
         <CheckCircle2 size={11} />
         Uploaded
       </span>
@@ -110,14 +110,14 @@ function UploadBadge({ status }: { status: UploadStatus }) {
   }
   if (status === "pending") {
     return (
-      <span className="inline-flex items-center gap-1 text-xs text-orange-700 bg-orange-100 px-2 py-0.5 rounded">
+      <span className="inline-flex items-center gap-1 text-xs text-orange-300 bg-orange-500/15 px-2 py-0.5 rounded">
         <Clock size={11} />
         Pending
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 text-xs text-red-700 bg-red-100 px-2 py-0.5 rounded">
+    <span className="inline-flex items-center gap-1 text-xs text-red-300 bg-red-500/15 px-2 py-0.5 rounded">
       <XCircle size={11} />
       Failed
     </span>
@@ -231,10 +231,10 @@ export function ActiveLOTSummary({
   const lot = dashboard?.lot ?? null;
 
   return (
-    <div className="space-y-6">
+    <div className="-m-6 p-6 min-h-[calc(100vh-6rem)] bg-[#0a1626] space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-slate-800">LOT Workspace</h1>
+          <h1 className="text-slate-100">LOT Workspace</h1>
           <p className="text-sm text-slate-500 mt-0.5">
             Active workspace for collecting and uploading inspections
           </p>
@@ -249,60 +249,60 @@ export function ActiveLOTSummary({
       </div>
 
       {!loading && !lot && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start gap-3">
-          <AlertCircle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 flex items-start gap-3">
+          <AlertCircle size={18} className="text-amber-400 shrink-0 mt-0.5" />
           <div>
-            <div className="text-sm text-amber-900 font-medium">No active LOT selected</div>
-            <div className="text-xs text-amber-700 mt-0.5">
+            <div className="text-sm text-amber-200 font-medium">No active LOT selected</div>
+            <div className="text-xs text-amber-300 mt-0.5">
               Select or create a LOT from LOT Management to see its workspace here.
             </div>
           </div>
         </div>
       )}
 
-      <div className="bg-white rounded-lg border border-slate-200 p-4">
-        <h3 className="text-slate-700 mb-4">LOT Details</h3>
+      <div className="bg-[#0f1e35] rounded-lg border border-[#1c3f66] p-4">
+        <h3 className="text-slate-200 mb-4">LOT Details</h3>
         <div className="grid grid-cols-4 gap-4">
           <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-lg bg-purple-50 flex items-center justify-center shrink-0">
-              <Package size={20} className="text-purple-600" />
+            <div className="w-10 h-10 rounded-lg bg-purple-500/10 flex items-center justify-center shrink-0">
+              <Package size={20} className="text-purple-300" />
             </div>
             <div>
               <div className="text-xs text-slate-500">LOT ID</div>
-              <div className="text-sm text-slate-700 font-medium font-mono mt-0.5">
+              <div className="text-sm text-slate-200 font-medium font-mono mt-0.5">
                 {loading ? "..." : lot?.lotId ?? "--"}
               </div>
             </div>
           </div>
           <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
-              <Building2 size={20} className="text-blue-600" />
+            <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0">
+              <Building2 size={20} className="text-blue-400" />
             </div>
             <div>
               <div className="text-xs text-slate-500">Customer</div>
-              <div className="text-sm text-slate-700 font-medium mt-0.5">
+              <div className="text-sm text-slate-200 font-medium mt-0.5">
                 {loading ? "..." : lot?.customer || "--"}
               </div>
             </div>
           </div>
           <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-              <Calendar size={20} className="text-slate-600" />
+            <div className="w-10 h-10 rounded-lg bg-[#16294a] flex items-center justify-center shrink-0">
+              <Calendar size={20} className="text-slate-300" />
             </div>
             <div>
               <div className="text-xs text-slate-500">Created Date</div>
-              <div className="text-sm text-slate-700 font-medium mt-0.5">
+              <div className="text-sm text-slate-200 font-medium mt-0.5">
                 {loading ? "..." : lot?.created || "--"}
               </div>
             </div>
           </div>
           <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0">
-              <User size={20} className="text-emerald-600" />
+            <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center shrink-0">
+              <User size={20} className="text-emerald-400" />
             </div>
             <div>
               <div className="text-xs text-slate-500">Current Inspector</div>
-              <div className="text-sm text-slate-700 font-medium mt-0.5">
+              <div className="text-sm text-slate-200 font-medium mt-0.5">
                 {loading ? "..." : dashboard?.operator.inspector || "--"}
               </div>
             </div>
@@ -313,67 +313,67 @@ export function ActiveLOTSummary({
       <div>
         <div className="flex items-center gap-2 mb-3">
           <HardDrive size={16} className="text-slate-500" />
-          <h3 className="text-slate-700">This USB -- Local Statistics</h3>
+          <h3 className="text-slate-200">This USB -- Local Statistics</h3>
         </div>
         <div className="grid grid-cols-4 gap-4">
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
+          <div className="bg-[#0f1e35] rounded-lg border border-[#1c3f66] p-4">
             <div className="flex items-center gap-2 mb-2">
-              <HardDrive size={16} className="text-blue-600" />
+              <HardDrive size={16} className="text-blue-400" />
               <span className="text-xs text-slate-500">Stored on USB</span>
             </div>
-            <div className="text-2xl text-slate-800 leading-none">
+            <div className="text-2xl text-slate-100 leading-none">
               {loading ? "..." : totalStored}
             </div>
-            <div className="text-xs text-slate-400 mt-1">inspections locally</div>
+            <div className="text-xs text-slate-500 mt-1">inspections locally</div>
           </div>
 
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
+          <div className="bg-[#0f1e35] rounded-lg border border-[#1c3f66] p-4">
             <div className="flex items-center gap-2 mb-2">
-              <Clock size={16} className="text-orange-500" />
+              <Clock size={16} className="text-orange-400" />
               <span className="text-xs text-slate-500">Pending Upload</span>
             </div>
-            <div className="text-2xl text-orange-600 leading-none">
+            <div className="text-2xl text-orange-400 leading-none">
               {loading ? "..." : pendingCount}
             </div>
-            <div className="text-xs text-slate-400 mt-1">awaiting sync</div>
+            <div className="text-xs text-slate-500 mt-1">awaiting sync</div>
           </div>
 
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
+          <div className="bg-[#0f1e35] rounded-lg border border-[#1c3f66] p-4">
             <div className="flex items-center gap-2 mb-2">
-              <CheckCircle2 size={16} className="text-emerald-600" />
+              <CheckCircle2 size={16} className="text-emerald-400" />
               <span className="text-xs text-slate-500">Uploaded Records</span>
             </div>
-            <div className="text-2xl text-emerald-600 leading-none">
+            <div className="text-2xl text-emerald-400 leading-none">
               {loading ? "..." : uploadedCount}
             </div>
-            <div className="text-xs text-slate-400 mt-1">synced to cloud</div>
+            <div className="text-xs text-slate-500 mt-1">synced to cloud</div>
           </div>
 
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
+          <div className="bg-[#0f1e35] rounded-lg border border-[#1c3f66] p-4">
             <div className="flex items-center gap-2 mb-2">
-              <XCircle size={16} className="text-red-500" />
+              <XCircle size={16} className="text-red-400" />
               <span className="text-xs text-slate-500">Failed Uploads</span>
             </div>
-            <div className="text-2xl text-red-500 leading-none">
+            <div className="text-2xl text-red-400 leading-none">
               {loading ? "..." : failedCount}
             </div>
-            <div className="text-xs text-slate-400 mt-1">need retry</div>
+            <div className="text-xs text-slate-500 mt-1">need retry</div>
           </div>
         </div>
       </div>
 
-      <div className="bg-white rounded-lg border border-slate-200">
-        <div className="p-4 border-b border-slate-200">
+      <div className="bg-[#0f1e35] rounded-lg border border-[#1c3f66]">
+        <div className="p-4 border-b border-[#1c3f66]">
           <div className="flex items-center justify-between mb-3">
             <div>
-              <h3 className="text-slate-700">Inspections</h3>
+              <h3 className="text-slate-200">Inspections</h3>
               <p className="text-xs text-slate-500 mt-0.5">
                 Records stored on this USB device
               </p>
             </div>
             <button
               onClick={onViewHistory}
-              className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-500"
+              className="flex items-center gap-1.5 text-sm text-blue-400 hover:text-blue-300"
             >
               <History size={14} />
               View All History
@@ -382,17 +382,17 @@ export function ActiveLOTSummary({
 
           <div className="flex items-center gap-3">
             <div className="relative flex-1 max-w-xs">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
               <input
                 type="text"
                 placeholder="Search serial or model..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 text-sm border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+                className="w-full pl-8 pr-3 py-1.5 text-sm border border-[#1c3f66] rounded-lg bg-[#0d1b30] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-[#132445]"
               />
             </div>
             <div className="flex items-center gap-1">
-              <Filter size={13} className="text-slate-400 mr-1" />
+              <Filter size={13} className="text-slate-500 mr-1" />
               {filterButtons.map(({ key, label, count }) => (
                 <button
                   key={key}
@@ -400,13 +400,13 @@ export function ActiveLOTSummary({
                   className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
                     filter === key
                       ? "bg-blue-600 text-white border-blue-600"
-                      : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                      : "bg-[#0f1e35] text-slate-300 border-[#1c3f66] hover:bg-[#132445]"
                   }`}
                 >
                   {label}
                   <span
                     className={`ml-1.5 px-1 py-0.5 rounded text-xs ${
-                      filter === key ? "bg-blue-500 text-white" : "bg-slate-100 text-slate-500"
+                      filter === key ? "bg-blue-500 text-white" : "bg-[#16294a] text-slate-500"
                     }`}
                   >
                     {count}
@@ -420,7 +420,7 @@ export function ActiveLOTSummary({
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-100 bg-slate-50">
+              <tr className="border-b border-[#16294a] bg-[#0d1b30]">
                 <th className="text-left text-xs text-slate-500 px-4 py-3">Serial Number</th>
                 <th className="text-left text-xs text-slate-500 px-4 py-3">Model</th>
                 <th className="text-left text-xs text-slate-500 px-4 py-3">Inspection Date</th>
@@ -432,13 +432,13 @@ export function ActiveLOTSummary({
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-slate-400">
+                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-slate-500">
                     Loading...
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-slate-400">
+                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-slate-500">
                     No inspections match your search or filter.
                   </td>
                 </tr>
@@ -446,12 +446,12 @@ export function ActiveLOTSummary({
                 filtered.map((inspection) => (
                   <tr
                     key={inspection.id}
-                    className="border-b border-slate-50 hover:bg-slate-50 transition-colors"
+                    className="border-b border-[#16294a] hover:bg-[#132445] transition-colors"
                   >
                     <td className="px-4 py-3">
-                      <span className="font-mono text-slate-700">{inspection.serialNumber}</span>
+                      <span className="font-mono text-slate-200">{inspection.serialNumber}</span>
                     </td>
-                    <td className="px-4 py-3 text-slate-600">{inspection.model}</td>
+                    <td className="px-4 py-3 text-slate-300">{inspection.model}</td>
                     <td className="px-4 py-3 text-slate-500">
                       <div className="flex items-center gap-1">
                         <Clock size={11} />
@@ -463,12 +463,12 @@ export function ActiveLOTSummary({
                     </td>
                     <td className="px-4 py-3">
                       {inspection.result === "passed" ? (
-                        <span className="inline-flex items-center gap-1 text-xs text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
+                        <span className="inline-flex items-center gap-1 text-xs text-emerald-300 bg-emerald-500/10 px-2 py-0.5 rounded">
                           <CheckCircle2 size={11} />
                           Passed
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 text-xs text-red-700 bg-red-50 px-2 py-0.5 rounded">
+                        <span className="inline-flex items-center gap-1 text-xs text-red-300 bg-red-500/10 px-2 py-0.5 rounded">
                           <XCircle size={11} />
                           Failed
                         </span>
@@ -477,7 +477,7 @@ export function ActiveLOTSummary({
                     <td className="px-4 py-3">
                       <button
                         onClick={() => handleView(inspection)}
-                        className="text-xs text-blue-600 hover:text-blue-500 flex items-center gap-1"
+                        className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1"
                       >
                         <ExternalLink size={11} />
                         View
@@ -494,10 +494,10 @@ export function ActiveLOTSummary({
       <div className="grid grid-cols-2 gap-3">
         <button
           onClick={onViewHistory}
-          className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg p-3 flex items-center gap-3 transition-colors"
+          className="bg-[#0f1e35] hover:bg-[#132445] text-slate-200 border border-[#1c3f66] rounded-lg p-3 flex items-center gap-3 transition-colors"
         >
-          <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center">
-            <History size={20} className="text-slate-600" />
+          <div className="w-10 h-10 rounded-lg bg-[#16294a] flex items-center justify-center">
+            <History size={20} className="text-slate-300" />
           </div>
           <div className="flex-1 text-left">
             <div className="text-sm font-medium">View History</div>
@@ -507,10 +507,10 @@ export function ActiveLOTSummary({
 
         <button
           onClick={onViewUploadQueue}
-          className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg p-3 flex items-center gap-3 transition-colors"
+          className="bg-[#0f1e35] hover:bg-[#132445] text-slate-200 border border-[#1c3f66] rounded-lg p-3 flex items-center gap-3 transition-colors"
         >
-          <div className="w-10 h-10 rounded-lg bg-orange-50 flex items-center justify-center">
-            <Upload size={20} className="text-orange-600" />
+          <div className="w-10 h-10 rounded-lg bg-orange-500/10 flex items-center justify-center">
+            <Upload size={20} className="text-orange-400" />
           </div>
           <div className="flex-1 text-left">
             <div className="text-sm font-medium">View Upload Queue</div>
@@ -521,11 +521,11 @@ export function ActiveLOTSummary({
         </button>
       </div>
 
-      <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+      <div className="bg-[#0d1b30] border border-[#1c3f66] rounded-lg p-4">
         <div className="flex items-start gap-3">
           <HardDrive size={18} className="text-slate-500 shrink-0 mt-0.5" />
           <div>
-            <div className="text-sm text-slate-700 font-medium">USB-Local Data Only</div>
+            <div className="text-sm text-slate-200 font-medium">USB-Local Data Only</div>
             <div className="text-xs text-slate-500 mt-0.5 leading-relaxed">
               This USB device only displays inspections stored locally. Complete LOT statistics and refurbishment decisions are available in the Cloud Command Center.
             </div>
@@ -535,17 +535,17 @@ export function ActiveLOTSummary({
 
       {detail !== null && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[80vh] flex flex-col">
-            <div className="p-4 border-b border-slate-200 flex items-center justify-between">
-              <h3 className="text-slate-800">Inspection Record</h3>
+          <div className="bg-[#0f1e35] rounded-lg shadow-xl w-full max-w-3xl max-h-[80vh] flex flex-col">
+            <div className="p-4 border-b border-[#1c3f66] flex items-center justify-between">
+              <h3 className="text-slate-100">Inspection Record</h3>
               <button
                 onClick={() => setDetail(null)}
-                className="text-sm text-slate-500 hover:text-slate-700"
+                className="text-sm text-slate-500 hover:text-slate-100"
               >
                 Close
               </button>
             </div>
-            <pre className="p-4 overflow-auto text-xs text-slate-700 font-mono whitespace-pre-wrap">
+            <pre className="p-4 overflow-auto text-xs text-slate-200 font-mono whitespace-pre-wrap">
               {detail}
             </pre>
           </div>

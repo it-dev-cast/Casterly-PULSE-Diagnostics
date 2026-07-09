@@ -25,14 +25,14 @@ interface SummaryPanelProps {
 }
 
 const alertColors = {
-  warning: "border-l-orange-500 bg-orange-50 text-orange-700",
-  error: "border-l-red-500 bg-red-50 text-red-700",
-  info: "border-l-blue-500 bg-blue-50 text-blue-600",
+  warning: "border-l-orange-500 bg-orange-500/10 text-orange-300",
+  error: "border-l-red-500 bg-red-500/10 text-red-300",
+  info: "border-l-blue-500 bg-blue-500/10 text-blue-400",
 };
 
 const alertIcons = {
-  warning: <AlertTriangle size={11} className="text-orange-500 shrink-0 mt-0.5" />,
-  error: <XCircle size={11} className="text-red-500 shrink-0 mt-0.5" />,
+  warning: <AlertTriangle size={11} className="text-orange-400 shrink-0 mt-0.5" />,
+  error: <XCircle size={11} className="text-red-400 shrink-0 mt-0.5" />,
   info: <CheckCircle size={11} className="text-blue-500 shrink-0 mt-0.5" />,
 };
 
@@ -76,12 +76,12 @@ export function SummaryPanel({
   const disp = data.displayInfo as any;
 
   const deviceSummary = [
-    { icon: <span className="text-[10px] font-mono text-slate-400">SN</span>, label: sys?.serial_number || "—" },
-    { icon: <Cpu size={11} className="text-slate-400" />, label: cpu?.model || "—" },
-    { icon: <MemoryStick size={11} className="text-slate-400" />, label: mem.length ? `${totalMemGb.toFixed(0)} GB ${memType || ""}`.trim() : "—" },
-    { icon: <HardDrive size={11} className="text-slate-400" />, label: drive ? `${drive.size_gb?.toFixed(0)} GB ${drive.storage_type || ""}`.trim() : "—" },
-    { icon: <Battery size={11} className="text-slate-400" />, label: battHealth != null ? `Battery: ${battHealth}%` : "—" },
-    { icon: <Monitor size={11} className="text-slate-400" />, label: disp ? `${disp.size_inches?.toFixed(0)}" ${disp.resolution || ""}`.trim() : "—" },
+    { icon: <span className="text-[10px] font-mono text-slate-500">SN</span>, label: sys?.serial_number || "—" },
+    { icon: <Cpu size={11} className="text-slate-500" />, label: cpu?.model || "—" },
+    { icon: <MemoryStick size={11} className="text-slate-500" />, label: mem.length ? `${totalMemGb.toFixed(0)} GB ${memType || ""}`.trim() : "—" },
+    { icon: <HardDrive size={11} className="text-slate-500" />, label: drive ? `${drive.size_gb?.toFixed(0)} GB ${drive.storage_type || ""}`.trim() : "—" },
+    { icon: <Battery size={11} className="text-slate-500" />, label: battHealth != null ? `Battery: ${battHealth}%` : "—" },
+    { icon: <Monitor size={11} className="text-slate-500" />, label: disp ? `${disp.size_inches?.toFixed(0)}" ${disp.resolution || ""}`.trim() : "—" },
   ];
 
   const g = data.grading.grades;
@@ -96,68 +96,74 @@ export function SummaryPanel({
   ];
 
   return (
-    <aside className="fixed right-0 top-16 bottom-0 w-64 bg-white border-l border-slate-200 flex flex-col overflow-hidden z-40">
+    // Positioning/fixing is the caller's responsibility (it's mounted in
+    // three different contexts: a standalone fixed rail, a collapsible
+    // panel, and a slide-out drawer). This component just fills whatever
+    // box it's given and handles its own internal scrolling, so content
+    // never gets silently clipped on shorter/narrower laptop screens.
+    <div className="h-full w-full bg-[#0f1e35] border-l border-[#1c3f66] flex flex-col overflow-hidden">
+      <div className="flex-1 min-h-0 overflow-y-auto sidebar-scroll-light">
       {/* Progress metrics */}
-      <div className="p-3 border-b border-slate-100">
+      <div className="p-3 border-b border-[#16294a]">
         <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Progress Metrics</div>
         <div className="grid grid-cols-2 gap-2">
           {[
-            { label: "Complete", value: `${completionPct}%`, color: "text-blue-600" },
-            { label: "Passed", value: passed, color: "text-emerald-600" },
-            { label: "Failed", value: failed, color: failed > 0 ? "text-red-600" : "text-slate-400" },
-            { label: "Remaining", value: remaining, color: "text-slate-600" },
+            { label: "Complete", value: `${completionPct}%`, color: "text-blue-400" },
+            { label: "Passed", value: passed, color: "text-emerald-400" },
+            { label: "Failed", value: failed, color: failed > 0 ? "text-red-400" : "text-slate-500" },
+            { label: "Remaining", value: remaining, color: "text-slate-300" },
           ].map((m) => (
-            <div key={m.label} className="bg-slate-50 rounded p-2 text-center">
+            <div key={m.label} className="bg-[#0d1b30] rounded p-2 text-center">
               <div className={`text-base leading-none ${m.color}`}>{m.value}</div>
-              <div className="text-[10px] text-slate-400 mt-0.5">{m.label}</div>
+              <div className="text-[10px] text-slate-500 mt-0.5">{m.label}</div>
             </div>
           ))}
         </div>
       </div>
 
       {/* Upload Status Widget */}
-      <div className="p-3 border-b border-slate-100">
+      <div className="p-3 border-b border-[#16294a]">
         <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Upload Status</div>
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
-              <Clock size={11} className="text-orange-500" />
-              <span className="text-xs text-slate-600">Pending</span>
+              <Clock size={11} className="text-orange-400" />
+              <span className="text-xs text-slate-300">Pending</span>
             </div>
-            <span className="text-sm text-orange-600 font-medium">{upload.pending}</span>
+            <span className="text-sm text-orange-400 font-medium">{upload.pending}</span>
           </div>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
-              <CheckCircle2 size={11} className="text-emerald-500" />
-              <span className="text-xs text-slate-600">Uploaded</span>
+              <CheckCircle2 size={11} className="text-emerald-400" />
+              <span className="text-xs text-slate-300">Uploaded</span>
             </div>
-            <span className="text-sm text-emerald-600 font-medium">{upload.uploaded}</span>
+            <span className="text-sm text-emerald-400 font-medium">{upload.uploaded}</span>
           </div>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
-              <XCircle size={11} className="text-red-500" />
-              <span className="text-xs text-slate-600">Failed</span>
+              <XCircle size={11} className="text-red-400" />
+              <span className="text-xs text-slate-300">Failed</span>
             </div>
-            <span className="text-sm text-red-600 font-medium">{upload.failed}</span>
+            <span className="text-sm text-red-400 font-medium">{upload.failed}</span>
           </div>
         </div>
       </div>
 
       {/* Device summary */}
-      <div className="p-3 border-b border-slate-100">
+      <div className="p-3 border-b border-[#16294a]">
         <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Device Summary</div>
         <div className="space-y-1.5">
           {deviceSummary.map((item, i) => (
             <div key={i} className="flex items-center gap-2">
               <div className="w-4 flex items-center justify-center">{item.icon}</div>
-              <span className="text-xs text-slate-600">{item.label}</span>
+              <span className="text-xs text-slate-300">{item.label}</span>
             </div>
           ))}
         </div>
       </div>
 
       {/* Cosmetic summary */}
-      <div className="p-3 border-b border-slate-100">
+      <div className="p-3 border-b border-[#16294a]">
         <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Cosmetic Summary</div>
         <div className="space-y-1">
           {cosmeticSummary.map((item) => (
@@ -166,10 +172,10 @@ export function SummaryPanel({
               <span
                 className={`text-[10px] px-1.5 py-0.5 rounded ${
                   item.status === "Pass"
-                    ? "bg-emerald-100 text-emerald-700"
+                    ? "bg-emerald-500/15 text-emerald-300"
                     : item.status === "Fail"
-                    ? "bg-red-100 text-red-700"
-                    : "bg-slate-100 text-slate-500"
+                    ? "bg-red-500/15 text-red-300"
+                    : "bg-[#16294a] text-slate-500"
                 }`}
               >
                 {item.status}
@@ -181,7 +187,7 @@ export function SummaryPanel({
 
       {/* Alerts */}
       {alerts.length > 0 && (
-        <div className="p-3 border-b border-slate-100">
+        <div className="p-3 border-b border-[#16294a]">
           <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Alerts</div>
           <div className="space-y-1.5">
             {alerts.map((alert, i) => (
@@ -198,16 +204,16 @@ export function SummaryPanel({
       )}
 
       {/* Activity timeline - Collapsible */}
-      <div className="border-t border-slate-100">
+      <div className="border-t border-[#16294a]">
         <button
           onClick={() => setIsTimelineExpanded(!isTimelineExpanded)}
-          className="w-full p-3 flex items-center justify-between hover:bg-slate-50 transition-colors"
+          className="w-full p-3 flex items-center justify-between hover:bg-[#132445] transition-colors"
         >
           <div className="text-[10px] text-slate-500 uppercase tracking-wider">Activity Timeline</div>
           {isTimelineExpanded ? (
-            <ChevronDown size={12} className="text-slate-400" />
+            <ChevronDown size={12} className="text-slate-500" />
           ) : (
-            <ChevronRight size={12} className="text-slate-400" />
+            <ChevronRight size={12} className="text-slate-500" />
           )}
         </button>
         {isTimelineExpanded && (
@@ -227,10 +233,10 @@ export function SummaryPanel({
                   minute: "2-digit",
                 }),
                 color: entry.label.includes("Failed")
-                  ? "text-red-500"
+                  ? "text-red-400"
                   : entry.label.includes("Started")
                     ? "text-blue-500"
-                    : "text-emerald-500",
+                    : "text-emerald-400",
               })),
               {
                 icon: <Clock size={10} />,
@@ -242,8 +248,8 @@ export function SummaryPanel({
               <div key={i} className="flex items-start gap-2">
                 <div className={`mt-0.5 ${item.color}`}>{item.icon}</div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-[10px] text-slate-600 truncate">{item.label}</div>
-                  <div className="text-[9px] text-slate-400">{item.time}</div>
+                  <div className="text-[10px] text-slate-300 truncate">{item.label}</div>
+                  <div className="text-[9px] text-slate-500">{item.time}</div>
                 </div>
               </div>
             ))}
@@ -251,8 +257,7 @@ export function SummaryPanel({
         )}
       </div>
 
-      {/* Spacer */}
-      <div className="flex-1"></div>
-    </aside>
+      </div>
+    </div>
   );
 }

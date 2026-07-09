@@ -61,7 +61,7 @@ pub fn save_system_info(
 ) -> Result<(), String> {
     conn.execute(
         "
-        INSERT INTO system_info
+        INSERT INTO tbl_pulse_system_info
             (uuid, serial_number, device_uuid, manufacturer, model, board_serial, bios_version, created_at)
         VALUES
             (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
@@ -98,7 +98,7 @@ pub fn save_cpu_info(
 ) -> Result<(), String> {
     conn.execute(
         "
-        INSERT INTO cpu_info
+        INSERT INTO tbl_pulse_cpu_info
             (uuid, serial_number, manufacturer, model, architecture, sockets, cores_per_socket,
              threads, max_speed_mhz, min_speed_mhz, current_speed_mhz, cache_l1, cache_l2, cache_l3,
              virtualization, hyper_threading, created_at)
@@ -163,7 +163,7 @@ pub fn save_memory_info(
 
         conn.execute(
             "
-            INSERT INTO memory_info
+            INSERT INTO tbl_pulse_memory_info
                 (uuid, serial_number, module_index, slot, bank_locator, size_mb, memory_type,
                  manufacturer, module_serial, part_number, speed_mhz, is_empty, is_onboard, created_at)
             VALUES
@@ -217,7 +217,7 @@ pub fn save_storage_info(
 
         conn.execute(
             "
-            INSERT INTO storage_info
+            INSERT INTO tbl_pulse_storage_info
                 (uuid, serial_number, drive_index, device, slot, model, drive_serial, firmware,
                  size_gb, transport, storage_type, health_percent, temperature_c, power_on_hours,
                  power_cycles, media_errors, critical_warning, created_at)
@@ -276,7 +276,7 @@ pub fn save_battery_info(
 ) -> Result<(), String> {
     conn.execute(
         "
-        INSERT INTO battery_info
+        INSERT INTO tbl_pulse_battery_info
             (uuid, serial_number, manufacturer, model, battery_serial, technology, status,
              cycle_count, design_capacity_mwh, full_charge_capacity_mwh, current_capacity_mwh,
              voltage_mv, health_percent, created_at)
@@ -327,7 +327,7 @@ pub fn save_network_info(
 ) -> Result<(), String> {
     conn.execute(
         "
-        INSERT INTO network_info
+        INSERT INTO tbl_pulse_network_info
             (uuid, serial_number, wifi, wifi_friendly, wifi_mac, ethernet, ethernet_friendly,
              ethernet_mac, bluetooth, created_at)
         VALUES
@@ -369,7 +369,7 @@ pub fn save_display_info(
 ) -> Result<(), String> {
     conn.execute(
         "
-        INSERT INTO display_info
+        INSERT INTO tbl_pulse_display_info
             (uuid, serial_number, manufacturer, model, panel_part_number, resolution, size_inches, created_at)
         VALUES
             (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
@@ -410,7 +410,7 @@ pub fn save_gpu_info(
 
         conn.execute(
             "
-            INSERT INTO gpu_info
+            INSERT INTO tbl_pulse_gpu_info
                 (uuid, serial_number, gpu_index, bus_address, vendor, model, driver, vram, output_resolution, created_at)
             VALUES
                 (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
@@ -451,7 +451,7 @@ pub fn save_camera_info(
 ) -> Result<(), String> {
     conn.execute(
         "
-        INSERT INTO camera_info
+        INSERT INTO tbl_pulse_camera_info
             (uuid, serial_number, vendor, model, device, status, created_at)
         VALUES
             (?1, ?2, ?3, ?4, ?5, ?6, ?7)
@@ -486,7 +486,7 @@ pub fn save_audio_info(
 ) -> Result<(), String> {
     conn.execute(
         "
-        INSERT INTO audio_info
+        INSERT INTO tbl_pulse_audio_info
             (uuid, serial_number, codec, speaker_type, mic_type, jack_type, created_at)
         VALUES
             (?1, ?2, ?3, ?4, ?5, ?6, ?7)

@@ -69,11 +69,11 @@ const duplicateGroups: DuplicateGroup[] = [
 
 export function DuplicateDetection() {
   return (
-    <div className="space-y-6">
+    <div className="-m-6 p-6 min-h-[calc(100vh-6rem)] bg-[#0a1626] space-y-6">
       <div>
         <div className="flex items-center gap-2 mb-1">
           <AlertTriangle size={24} className="text-yellow-600" />
-          <h1 className="text-slate-800">Duplicate Detection</h1>
+          <h1 className="text-slate-100">Duplicate Detection</h1>
         </div>
         <p className="text-sm text-slate-500">
           Resolve duplicate inspections for the same serial number
@@ -101,15 +101,15 @@ export function DuplicateDetection() {
       {duplicateGroups.map((group, groupIndex) => (
         <div
           key={groupIndex}
-          className="bg-white rounded-lg border border-yellow-200"
+          className="bg-[#0f1e35] rounded-lg border border-yellow-200"
         >
           <div className="p-4 border-b border-yellow-100 bg-yellow-50">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-slate-800 font-medium">
+                <h3 className="text-slate-100 font-medium">
                   {group.serialNumber}
                 </h3>
-                <p className="text-sm text-slate-600 mt-0.5">{group.model}</p>
+                <p className="text-sm text-slate-300 mt-0.5">{group.model}</p>
               </div>
               <div className="flex items-center gap-2">
                 <AlertTriangle size={16} className="text-yellow-600" />
@@ -124,7 +124,7 @@ export function DuplicateDetection() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-slate-100">
+                  <tr className="border-b border-[#16294a]">
                     <th className="text-left text-xs text-slate-500 pb-3 pr-4">
                       Select
                     </th>
@@ -146,35 +146,35 @@ export function DuplicateDetection() {
                   {group.inspections.map((inspection, index) => (
                     <tr
                       key={inspection.id}
-                      className="border-b border-slate-50 hover:bg-slate-50 transition-colors"
+                      className="border-b border-[#16294a] hover:bg-[#132445] transition-colors"
                     >
                       <td className="py-3 pr-4">
                         <input
                           type="checkbox"
-                          className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                          className="w-4 h-4 rounded border-[#1c3f66] text-blue-400 focus:ring-2 focus:ring-blue-500"
                           defaultChecked={inspection.selected}
                         />
                       </td>
                       <td className="py-3 pr-4">
-                        <span className="font-mono text-slate-700 text-xs">
+                        <span className="font-mono text-slate-200 text-xs">
                           INS-{inspection.id.padStart(6, "0")}
                         </span>
                       </td>
                       <td className="py-3 pr-4">
-                        <div className="flex items-center gap-1.5 text-slate-600">
-                          <Calendar size={12} className="text-slate-400" />
+                        <div className="flex items-center gap-1.5 text-slate-300">
+                          <Calendar size={12} className="text-slate-500" />
                           {inspection.date}
                         </div>
                       </td>
                       <td className="py-3 pr-4">
-                        <div className="flex items-center gap-1.5 text-slate-600">
-                          <User size={12} className="text-slate-400" />
+                        <div className="flex items-center gap-1.5 text-slate-300">
+                          <User size={12} className="text-slate-500" />
                           {inspection.inspector}
                         </div>
                       </td>
                       <td className="py-3 pr-4">
-                        <div className="flex items-center gap-1.5 text-slate-600">
-                          <Package size={12} className="text-slate-400" />
+                        <div className="flex items-center gap-1.5 text-slate-300">
+                          <Package size={12} className="text-slate-500" />
                           {inspection.lot}
                         </div>
                       </td>
@@ -184,7 +184,7 @@ export function DuplicateDetection() {
               </table>
             </div>
 
-            <div className="flex gap-2 mt-4 pt-4 border-t border-slate-100">
+            <div className="flex gap-2 mt-4 pt-4 border-t border-[#16294a]">
               <button className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-sm px-3 py-2 rounded-lg transition-colors">
                 <CheckCircle2 size={16} />
                 Keep Selected
@@ -204,7 +204,7 @@ export function DuplicateDetection() {
 
       {/* Action buttons */}
       <div className="flex gap-2 justify-end">
-        <button className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
+        <button className="px-4 py-2 text-sm text-slate-300 hover:bg-[#1c3457] rounded-lg transition-colors">
           Cancel
         </button>
         <button className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors">

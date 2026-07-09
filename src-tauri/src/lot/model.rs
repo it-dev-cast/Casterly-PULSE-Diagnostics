@@ -14,7 +14,7 @@ pub struct Lot {
     pub status: String,
 }
 
-/// A row from the `lots` table, serialized to the frontend with camelCase keys.
+/// A row from the `tbl_pulse_lots` table, serialized to the frontend with camelCase keys.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct LotRow {

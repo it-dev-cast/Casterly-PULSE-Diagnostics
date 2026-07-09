@@ -76,15 +76,15 @@ export function TouchpadTest({ onNext }: TouchpadTestProps) {
   const allPassed = leftClick && rightClick && movement;
 
   return (
-    <div className="space-y-5">
+    <div className="-m-6 p-6 min-h-[calc(100vh-6rem)] bg-[#0a1626] space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-slate-800">Touchpad Test</h1>
+          <h1 className="text-slate-100">Touchpad Test</h1>
           <p className="text-sm text-slate-500 mt-0.5">Validate touchpad gestures and click detection</p>
         </div>
         <button
           onClick={reset}
-          className="flex items-center gap-1.5 text-sm text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 px-3 py-1.5 rounded-lg transition-colors"
+          className="flex items-center gap-1.5 text-sm text-slate-300 bg-[#0f1e35] border border-[#1c3f66] hover:bg-[#132445] px-3 py-1.5 rounded-lg transition-colors"
         >
           <RefreshCw size={13} />
           Reset
@@ -94,11 +94,11 @@ export function TouchpadTest({ onNext }: TouchpadTestProps) {
       <div className="grid grid-cols-3 gap-5">
         {/* Interactive pad */}
         <div className="col-span-2 space-y-4">
-          <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <div className="bg-[#0f1e35] rounded-xl border border-[#1c3f66] p-4">
             <div className="flex items-center gap-2 mb-3">
-              <MousePointer2 size={14} className="text-blue-600" />
-              <span className="text-sm text-slate-700">Cursor Tracking Zone</span>
-              <span className="text-xs text-slate-400 ml-auto">Move your mouse inside this area</span>
+              <MousePointer2 size={14} className="text-blue-400" />
+              <span className="text-sm text-slate-200">Cursor Tracking Zone</span>
+              <span className="text-xs text-slate-500 ml-auto">Move your mouse inside this area</span>
             </div>
 
             <div
@@ -132,7 +132,7 @@ export function TouchpadTest({ onNext }: TouchpadTestProps) {
                     <div className="absolute inset-0 flex items-center justify-center">
                       <div className="text-center">
                         <MousePointer2 size={24} className="text-slate-500 mx-auto mb-2" />
-                        <p className="text-slate-400 text-xs">LEFT CLICK</p>
+                        <p className="text-slate-500 text-xs">LEFT CLICK</p>
                       </div>
                     </div>
                   )}
@@ -157,7 +157,7 @@ export function TouchpadTest({ onNext }: TouchpadTestProps) {
                     <div className="absolute inset-0 flex items-center justify-center">
                       <div className="text-center">
                         <MousePointer2 size={24} className="text-slate-500 mx-auto mb-2" />
-                        <p className="text-slate-400 text-xs">RIGHT CLICK</p>
+                        <p className="text-slate-500 text-xs">RIGHT CLICK</p>
                       </div>
                     </div>
                   )}
@@ -198,7 +198,7 @@ export function TouchpadTest({ onNext }: TouchpadTestProps) {
                 className={`flex-1 py-3 text-center text-sm rounded-lg transition-all border-2 ${
                   leftClick
                     ? "bg-emerald-500 border-emerald-400 text-white"
-                    : "bg-slate-100 border-slate-200 text-slate-700"
+                    : "bg-[#16294a] border-[#1c3f66] text-slate-200"
                 }`}
               >
                 {leftClick ? (
@@ -214,7 +214,7 @@ export function TouchpadTest({ onNext }: TouchpadTestProps) {
                 className={`flex-1 py-3 text-center text-sm rounded-lg transition-all border-2 ${
                   rightClick
                     ? "bg-emerald-500 border-emerald-400 text-white"
-                    : "bg-slate-100 border-slate-200 text-slate-700"
+                    : "bg-[#16294a] border-[#1c3f66] text-slate-200"
                 }`}
               >
                 {rightClick ? (
@@ -232,8 +232,8 @@ export function TouchpadTest({ onNext }: TouchpadTestProps) {
 
         {/* Status panel */}
         <div className="space-y-4">
-          <div className="bg-white rounded-xl border border-slate-200 p-4">
-            <h3 className="text-slate-700 mb-3">Detection Status</h3>
+          <div className="bg-[#0f1e35] rounded-xl border border-[#1c3f66] p-4">
+            <h3 className="text-slate-200 mb-3">Detection Status</h3>
             <div className="space-y-3">
               {[
                 { label: "Left Click", detected: leftClick, key: "left" },
@@ -242,16 +242,16 @@ export function TouchpadTest({ onNext }: TouchpadTestProps) {
                 { label: "Scroll", detected: scroll, key: "scroll" },
               ].map((item) => (
                 <div key={item.key} className="flex items-center justify-between">
-                  <span className="text-sm text-slate-600">{item.label}</span>
+                  <span className="text-sm text-slate-300">{item.label}</span>
                   <div className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full ${
                     item.detected
-                      ? "bg-emerald-100 text-emerald-700"
-                      : "bg-slate-100 text-slate-400"
+                      ? "bg-emerald-500/15 text-emerald-300"
+                      : "bg-[#16294a] text-slate-500"
                   }`}>
                     {item.detected ? (
                       <><CheckCircle2 size={12} /> Detected</>
                     ) : (
-                      <><div className="w-2 h-2 rounded-full border border-slate-300" /> Waiting</>
+                      <><div className="w-2 h-2 rounded-full border border-[#1c3f66]" /> Waiting</>
                     )}
                   </div>
                 </div>
@@ -260,14 +260,14 @@ export function TouchpadTest({ onNext }: TouchpadTestProps) {
           </div>
 
           {/* Overall result */}
-          <div className="bg-white rounded-xl border border-slate-200 p-4">
-            <h3 className="text-slate-700 mb-3">Result</h3>
+          <div className="bg-[#0f1e35] rounded-xl border border-[#1c3f66] p-4">
+            <h3 className="text-slate-200 mb-3">Result</h3>
             {!result ? (
               <div className="space-y-2">
                 <button
                   onClick={() => setResult("pass")}
                   disabled={!allPassed}
-                  className="w-full flex items-center justify-center gap-2 py-3 bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed text-white rounded-lg text-sm transition-colors"
+                  className="w-full flex items-center justify-center gap-2 py-3 bg-emerald-500 hover:bg-emerald-400 disabled:bg-[#16294a] disabled:text-slate-500 disabled:cursor-not-allowed text-white rounded-lg text-sm transition-colors"
                 >
                   <CheckCircle2 size={15} />
                   Mark as Pass
@@ -282,7 +282,7 @@ export function TouchpadTest({ onNext }: TouchpadTestProps) {
               </div>
             ) : (
               <div className={`flex items-center gap-2 p-3 rounded-lg ${
-                result === "pass" ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
+                result === "pass" ? "bg-emerald-500/10 text-emerald-300" : "bg-red-500/10 text-red-300"
               }`}>
                 {result === "pass" ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
                 <span className="text-sm">Touchpad {result === "pass" ? "Passed" : "Failed"}</span>
@@ -290,8 +290,8 @@ export function TouchpadTest({ onNext }: TouchpadTestProps) {
             )}
           </div>
 
-          <div className="bg-slate-50 rounded-xl border border-slate-200 p-3 text-xs text-slate-500 space-y-1.5">
-            <p className="font-medium text-slate-600">Instructions</p>
+          <div className="bg-[#0d1b30] rounded-xl border border-[#1c3f66] p-3 text-xs text-slate-500 space-y-1.5">
+            <p className="font-medium text-slate-300">Instructions</p>
             <p>1. Move cursor freely in the tracking zone</p>
             <p>2. Perform a left click</p>
             <p>3. Perform a right click</p>
@@ -304,7 +304,7 @@ export function TouchpadTest({ onNext }: TouchpadTestProps) {
         <button
           onClick={onNext}
           disabled={!result}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white text-sm px-5 py-2.5 rounded-lg transition-colors"
+          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:bg-[#1c3f66] disabled:text-slate-500 disabled:cursor-not-allowed text-white text-sm px-5 py-2.5 rounded-lg transition-colors"
         >
           Continue to Battery Assessment
           <ChevronRight size={15} />

@@ -22,6 +22,8 @@ pub fn create_and_save(
 
     usb_id: &str,
 
+    cly_no: &str,
+
     inspector: &str,
 
     lot_name: &str
@@ -161,6 +163,9 @@ pub fn create_and_save(
             usb_id:
                 usb_id.to_string(),
 
+            cly_no:
+                cly_no.to_string(),
+
             inspector:
                 inspector.to_string(),
 
@@ -199,9 +204,10 @@ pub fn create_and_save(
       conn.execute(
 
          "
-         INSERT INTO inspections
+         INSERT INTO tbl_pulse_inspections
          (
             uuid,
+            cly_no,
             lot_name,
             inspector,
             timestamp,
@@ -209,12 +215,14 @@ pub fn create_and_save(
             json_data
          )
          VALUES
-         (?1, ?2, ?3, ?4, ?5, ?6)
+         (?1, ?2, ?3, ?4, ?5, ?6, ?7)
          ",
 
          params![
 
             run.uuid,
+
+            run.cly_no,
 
             run.lot_name,
 

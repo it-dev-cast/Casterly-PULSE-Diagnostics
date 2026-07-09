@@ -23,46 +23,78 @@ pub fn collect() -> Result<Option<CameraInfo>> {
             &output.stdout
         );
 
-    let mut model =
-        String::new();
+    // v4l2-ctl groups devices like:
+    //   "<name> (<bus>):\n\t/dev/videoN\n\t/dev/videoM\n\n"
+    // Split into per-device blocks on blank lines so a video node always
+    // gets attributed to the device it actually belongs to, instead of just
+    // grabbing the first "/dev/video*" line anywhere in the whole output
+    // (which could belong to an unrelated entry listed earlier).
+    let blocks: Vec<&str> = text
+        .split("\n\n")
+        .map(|b| b.trim())
+        .filter(|b| !b.is_empty())
+        .collect();
 
-    let mut device =
-        String::new();
+    // Matched case-insensitively: different drivers/vendors capitalize (or
+    // don't) "webcam" / "camera" inconsistently, and the previous
+    // case-sensitive match on just "Webcam"/"Camera"/"Integrated" was
+    // silently reporting "No webcam detected" for real cameras whose
+    // reported name didn't happen to match that exact casing.
+    let keywords = ["webcam", "camera", "integrated", "uvc"];
 
-    for line in text.lines() {
+    let mut matched: Option<(String, String)> = None;
+    let mut fallback: Option<(String, String)> = None;
 
-        let l = line.trim();
+    for block in &blocks {
 
-        //
-        // Device name line
-        //
-        if l.contains("Webcam")
-            || l.contains("Camera")
-            || l.contains("Integrated")
-        {
-            model =
-                l.split(':')
-                 .next()
-                 .unwrap_or("")
-                 .trim()
-                 .to_string();
+        let mut lines = block.lines();
+
+        let name_line = match lines.next() {
+            Some(l) => l,
+            None => continue,
+        };
+
+        let name =
+            name_line
+                .trim()
+                .split(':')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .to_string();
+
+        let device =
+            block
+                .lines()
+                .map(|l| l.trim())
+                .find(|l| l.starts_with("/dev/video"))
+                .unwrap_or("")
+                .to_string();
+
+        if name.is_empty() || device.is_empty() {
+            // Metadata-only entry (e.g. a media controller node with no
+            // video device attached) -- nothing usable here.
+            continue;
         }
 
-        //
-        // First video node
-        //
-        if l.starts_with("/dev/video")
-            && device.is_empty()
-        {
-            device =
-                l.to_string();
+        if keywords.iter().any(|k| name.to_lowercase().contains(*k)) {
+            matched = Some((name, device));
+            break;
+        }
+
+        // Keep the first plausible device+node pair as a fallback in case
+        // nothing in the list matches the keyword set -- better to report
+        // an unusually-named camera than to claim no webcam exists when
+        // v4l2-ctl clearly sees a video capture device.
+        if fallback.is_none() {
+            fallback = Some((name, device));
         }
     }
 
-    if model.is_empty() {
-
-        return Ok(None);
-    }
+    let (model, device) = match matched.or(fallback) {
+        Some(v) => v,
+        None => return Ok(None),
+    };
 
     let vendor =
         detect_vendor(&model);

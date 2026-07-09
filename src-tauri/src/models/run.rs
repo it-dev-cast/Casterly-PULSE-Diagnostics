@@ -18,6 +18,8 @@ pub struct InspectionRun {
 
     pub usb_id: String,
 
+    pub cly_no: String,
+
     pub inspector: String,
 
     pub lot_name: String,
