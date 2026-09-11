@@ -84,7 +84,7 @@ export default function App() {
     lotName: string;
     inspectorName: string;
   }>({ lotName: "", inspectorName: "" });
-  // Mandatory CLY Number (e.g. "CLY-1234"), captured fresh for every
+  // Mandatory CLY Number (e.g. "CLY1234"), captured fresh for every
   // inspection via ClyNumberModal before the workflow is allowed to start.
   const [clyNo, setClyNo] = useState<string>("");
   const [showClyModal, setShowClyModal] = useState(false);
@@ -108,6 +108,39 @@ export default function App() {
   useEffect(() => {
     refreshSession();
   }, [refreshSession]);
+
+  // One-time check, right after the app finishes loading: compare Supabase's
+  // active app_version (tbl_pulse_app_ver) against what this device last
+  // recorded as installed (check_app_update returns null when offline or
+  // already current — see lib.rs). If Supabase has moved on to a newer
+  // build, prompt the technician; on OK the backend downloads the new
+  // udiag4 binary from Supabase Storage, swaps it in on the pendrive, and
+  // relaunches the app.
+  useEffect(() => {
+    invoke<{ currentVersion: string; newVersion: string } | null>(
+      "check_app_update",
+    )
+      .then(async (update) => {
+        if (!update) return;
+        await message(
+          `New PULSE Application Version = "${update.newVersion}" has been deployed, please click on OK button to reload with Newer Version`,
+          { title: "Update Available", kind: "info" },
+        );
+        try {
+          await invoke("apply_app_update", { newVersion: update.newVersion });
+          // On success the backend replaces the executable on the pendrive,
+          // spawns a fresh process at the same path, and exits this one —
+          // there's nothing further to do here.
+        } catch (err) {
+          console.error("Failed to apply app update:", err);
+          await message(`Failed to update: ${err}`, {
+            title: "Update Failed",
+            kind: "error",
+          });
+        }
+      })
+      .catch((err) => console.error("Failed to check for app update:", err));
+  }, []);
 
   // Kiosk mode: the window itself is fullscreen/borderless/skip-taskbar
   // (configured in tauri.conf.json + reasserted in Rust setup()), but the

@@ -419,5 +419,21 @@ pub fn initialize_database()
         []
     )?;
 
+    // Local mirror of Supabase's tbl_pulse_app_ver (same column shape:
+    // app_version / active_yn). Only ever holds one cached row (see
+    // database::app_version), kept in sync whenever the app can reach
+    // Supabase over Wi-Fi, and read from directly when it can't.
+    conn.execute(
+        "
+        CREATE TABLE IF NOT EXISTS tbl_pulse_app_ver (
+            id INTEGER PRIMARY KEY,
+            app_version TEXT NOT NULL,
+            active_yn INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL
+        )
+        ",
+        [],
+    )?;
+
     Ok(conn)
 }

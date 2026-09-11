@@ -1,5 +1,4 @@
 use anyhow::Result;
-use std::process::Command;
 
 use crate::models::device::StorageHealth;
 
@@ -10,11 +9,7 @@ pub fn collect()
         Vec::<StorageHealth>::new();
 
     let output =
-        Command::new("nvme")
-            .args([
-                "list"
-            ])
-            .output();
+        crate::sudo::storage_output(&["nvme", "list"], false, 5);
 
     if let Ok(out) = output
     {
@@ -59,11 +54,11 @@ fn collect_nvme_health(
 -> Result<StorageHealth>
 {
     let output =
-        crate::sudo::output(&[
+        crate::sudo::storage_output(&[
             "nvme",
             "smart-log",
             device,
-        ])?;
+        ], true, 7)?;
 
     let text =
         String::from_utf8_lossy(

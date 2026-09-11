@@ -1,28 +1,7 @@
-// =============================================================================
-// SystemScan.tsx
-// =============================================================================
-// PURPOSE:
-//   Displays a full hardware scan page for a device being inspected.
-//   On mount, it fires parallel Tauri invoke() calls to gather system info
-//   (CPU, memory, storage, battery, GPU, display, network) from the Rust
-//   backend. Once all 8 calls complete, it auto-advances to the next step
-//   via the onNext() callback.
-//
-// DATA FLOW:
-//   1. On mount → invoke() calls fire in parallel (no await, all concurrent)
-//   2. Each call resolves → local state updated + data written to InspectionContext
-//   3. completedCalls counter increments per resolved/rejected call
-//   4. When completedCalls reaches 8 → onNext() is called automatically
-//
-// CACHING:
-//   If data.scanCompleted is already true in InspectionContext (i.e. user
-//   navigated back to this page), the component restores state from context
-//   and skips the scan entirely.
-//
-// RE-SCAN:
-//   The "Re-scan" button resets the module-level guard and reloads the page,
-//   forcing a completely fresh scan on next mount.
-// =============================================================================
+// System Scan: ten concurrent hardware collectors. Storage sends basic disk data
+// through a Tauri channel before optional health enrichment. Named collectors
+// settle in finally; only all-terminal results mark the shared scan complete.
+// Cached completed scans restore on mount. Re-scan reloads the page.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Imports
@@ -31,9 +10,11 @@
 import { useEffect, useState, useRef } from "react";
 import { useInspection } from "../../context/InspectionContext";
 import { normalizeCapacity } from "../../utils/capacity";
+import { REQUIRED_SCANNERS, isScanComplete, storageFallback, settleScanner } from "../../utils/scanState";
+import type { Scanner, StorageState } from "../../utils/scanState";
 
 // Tauri IPC bridge — invoke() calls a named Rust command in src-tauri/
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 
 // Lucide icons used in each InfoCard
 import {
@@ -52,18 +33,8 @@ import {
 } from "lucide-react";
 
 
-// =============================================================================
-// MODULE-LEVEL SCAN GUARD
-// =============================================================================
-// This flag lives outside the component so it survives re-renders.
-// It prevents the scan from firing more than once per page load, even if the
-// component unmounts and remounts (e.g. during React strict mode double-invoke).
-//
-// The "Re-scan" button resets this to false before reloading the page, which
-// allows a fresh scan on the next mount.
-// =============================================================================
+// Existing per-page guard: reset by Re-scan/reload.
 let scanAlreadyCompleted = false;
-
 
 // =============================================================================
 // TYPES & INTERFACES
@@ -76,7 +47,7 @@ interface InfoCardProps {
   icon: React.ElementType;          // Lucide icon component (e.g. Cpu, HardDrive)
   title: string;                    // Card header label
   items: { label: string; value: string }[]; // Key-value rows inside the card
-  status?: "ok" | "warn" | "critical";       // Controls the badge color/label
+  status?: "ok" | "warn" | "critical" | "scanning" | "unavailable" | "failed";       // Controls the badge color/label
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -229,6 +200,9 @@ function InfoCard({ icon: Icon, title, items, status = "ok" }: InfoCardProps) {
     ok:       "bg-emerald-500/15 text-emerald-300",
     warn:     "bg-amber-500/15 text-amber-300",
     critical: "bg-red-500/15 text-red-300",
+    scanning: "bg-blue-500/15 text-blue-300",
+    unavailable: "bg-amber-500/15 text-amber-300",
+    failed: "bg-red-500/15 text-red-300",
   };
 
   // Human-readable label shown inside the badge
@@ -236,6 +210,9 @@ function InfoCard({ icon: Icon, title, items, status = "ok" }: InfoCardProps) {
     ok:       "Detected",
     warn:     "Warning",
     critical: "Critical",
+    scanning: "Scanning",
+    unavailable: "Unavailable",
+    failed: "Failed",
   };
 
   return (
@@ -291,16 +268,19 @@ export function SystemScan({ onNext, isExecutionActive }: SystemScanProps) {
   const [cameraInfo, setCameraInfo] = useState<CameraInfo | null>(null);
   const [audioInfo, setAudioInfo] = useState<AudioInfo | null>(null);
 
-  // Tracks how many of the 8 parallel invoke() calls have settled (resolved OR
-  // rejected). When this hits 8, the scan is considered complete.
-  const [completedCalls, setCompletedCalls] = useState(0);
+  // Each named scanner settles exactly once; storage must also be terminal.
+  const [settledScanners, setSettledScanners] = useState<Set<Scanner>>(new Set());
+  const [storageState, setStorageState] = useState<StorageState>("pending");
+  const completedCalls = settledScanners.size;
+  const scanComplete = isScanComplete(settledScanners, storageState);
+  const markSettled = (scanner: Scanner) => setSettledScanners(prev => new Set([...prev, scanner]));
 
   // ─────────────────────────────────────────────────────────────────────────
   // Refs
   // ─────────────────────────────────────────────────────────────────────────
 
   // Prevents onNext() from being called more than once if completedCalls
-  // somehow increments past 8 (e.g. due to React strict mode double effects).
+  // changes after completion (e.g. due to React strict mode double effects).
   const autoAdvanced = useRef(false);
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -309,17 +289,6 @@ export function SystemScan({ onNext, isExecutionActive }: SystemScanProps) {
   const { data, setData } = useInspection();
 
 
-  // ===========================================================================
-  // EFFECT 1 — Restore cached scan from InspectionContext
-  // ===========================================================================
-  // Runs once on mount. If the user already completed a scan (e.g. navigated
-  // back from a later step), data.scanCompleted will be true. In that case,
-  // we repopulate local state from the context cache so the UI shows results
-  // instantly without re-running any invoke() calls.
-  //
-  // completedCalls is set to 8 directly to mark the scan as done and prevent
-  // the scan effect (Effect 2) from running.
-  // ===========================================================================
   useEffect(() => {
 
     if (!data.scanCompleted) return; // No cached data → fall through to Effect 2
@@ -336,39 +305,12 @@ export function SystemScan({ onNext, isExecutionActive }: SystemScanProps) {
     setGpuInfo(data.gpuInfo || []);
     setCameraInfo(data.cameraInfo);
     setAudioInfo(data.audioInfo);
-    setCompletedCalls(10); // Mark complete; suppresses fresh scan
+    setSettledScanners(new Set(REQUIRED_SCANNERS));
+    setStorageState(data.storageInfo?.length ? "completed" : "unavailable");
 
   }, []); // Empty deps — intentionally runs only on initial mount
 
 
-  // ===========================================================================
-  // EFFECT 2 — Run fresh hardware scan via Tauri invoke() calls
-  // ===========================================================================
-  // Fires all 8 backend commands in parallel. Each .then() / .catch() handler:
-  //   1. Updates the relevant local state slice
-  //   2. Writes the result into InspectionContext (setData)
-  //   3. Increments completedCalls by 1
-  //
-  // IMPORTANT: All 8 calls are fire-and-forget (no await). They run concurrently
-  // and the UI updates progressively as each one resolves.
-  //
-  // GUARDS (all must pass before any invoke fires):
-  //   - isExecutionActive: this stage must actually be the active workflow
-  //     step (i.e. the user has clicked "Start Inspection" and progressed
-  //     here normally) -- prevents the real hardware scan from firing just
-  //     because the user clicked into this screen from the sidebar before
-  //     starting an inspection
-  //   - data.scanCompleted: context already has a fresh scan → skip
-  //   - scanAlreadyCompleted: module-level flag → prevents double-fire in
-  //     React Strict Mode or accidental remounts
-  //
-  // TO ADD A NEW INVOKE CALL:
-  //   1. Define the response interface above
-  //   2. Add a useState slice above
-  //   3. Add the invoke() block below, incrementing completedCalls in both
-  //      .then() and .catch()
-  //   4. Increase the threshold in Effect 3 from 8 to 9 (or whatever new total)
-  // ===========================================================================
   useEffect(() => {
 
     // Guard 0: don't auto-run the actual hardware scan until this stage is
@@ -395,14 +337,14 @@ export function SystemScan({ onNext, isExecutionActive }: SystemScanProps) {
     // Returns device manufacturer, model, serial number, and UUID.
     // On error, populates systemInfo with the error string so it's visible
     // in the UI rather than silently missing.
-    invoke<SystemInfo>("get_system_info")
-      .then((result) => {
+    void settleScanner(
+      () => invoke<SystemInfo>("get_system_info"),
+      (result) => {
         console.log("System Info:", result);
         setSystemInfo(result);
         setData(prev => ({ ...prev, systemInfo: result }));
-        setCompletedCalls(prev => prev + 1);
-      })
-      .catch((err) => {
+      },
+      (err) => {
         console.error("System scan failed:", err);
         // Surface the error in the UI instead of showing a blank card, and
         // mirror it into the shared context so a later restore stays consistent.
@@ -416,112 +358,132 @@ export function SystemScan({ onNext, isExecutionActive }: SystemScanProps) {
         };
         setSystemInfo(errInfo);
         setData(prev => ({ ...prev, systemInfo: errInfo }));
-        setCompletedCalls(prev => prev + 1);
-      });
+      },
+      () => markSettled("system"),
+    );
 
     // ── Call 2: CPU Info ───────────────────────────────────────────────────
     // Returns processor model, core/thread counts, speed, cache, etc.
-    invoke<CpuInfo>("get_cpu_info")
-      .then((result) => {
+    void settleScanner(
+      () => invoke<CpuInfo>("get_cpu_info"),
+      (result) => {
         console.log("CPU INFO:", result);
         setCpuInfo(result);
         setData(prev => ({ ...prev, cpuInfo: result }));
-        setCompletedCalls(prev => prev + 1);
-      })
-      .catch((err) => {
+      },
+      (err) => {
         console.error("CPU ERROR:", err);
-        setCompletedCalls(prev => prev + 1);
-      });
+      },
+      () => markSettled("cpu"),
+    );
 
     // ── Call 3: Battery Info ───────────────────────────────────────────────
     // Returns null on systems without a battery (e.g. desktops).
     // The null check before setBatteryInfo prevents overwriting a valid state
     // with null if the command succeeds but the device has no battery.
-    invoke<BatteryInfo | null>("get_battery_info")
-      .then((result) => {
+    void settleScanner(
+      () => invoke<BatteryInfo | null>("get_battery_info"),
+      (result) => {
         console.log("BATTERY INFO:", result);
         if (result) setBatteryInfo(result);
         setData(prev => ({ ...prev, batteryInfo: result }));
-        setCompletedCalls(prev => prev + 1);
-      })
-      .catch((err) => {
+      },
+      (err) => {
         console.error("BATTERY ERROR:", err);
-        setCompletedCalls(prev => prev + 1);
-      });
+      },
+      () => markSettled("battery"),
+    );
 
     // ── Call 4: GPU Info ───────────────────────────────────────────────────
-    invoke<GpuInfo[]>("get_gpu_info")
-      .then((result) => {
+    void settleScanner(
+      () => invoke<GpuInfo[]>("get_gpu_info"),
+      (result) => {
         console.log("GPU INFO:", result);
         setGpuInfo(result);
         setData(prev => ({ ...prev, gpuInfo: result }));
-        setCompletedCalls(prev => prev + 1);
-      })
-      .catch((err) => {
+      },
+      (err) => {
         console.error("GPU ERROR:", err);
-        setCompletedCalls(prev => prev + 1);
-      });
+      },
+      () => markSettled("gpu"),
+    );
 
     // ── Call 5: Display Info ───────────────────────────────────────────────
-    invoke<DisplayInfo | null>("get_display_info")
-      .then((result) => {
+    void settleScanner(
+      () => invoke<DisplayInfo | null>("get_display_info"),
+      (result) => {
         console.log("DISPLAY INFO:", result);
         setDisplayInfo(result);
         setData(prev => ({ ...prev, displayInfo: result }));
-        setCompletedCalls(prev => prev + 1);
-      })
-      .catch((err) => {
+      },
+      (err) => {
         console.error("DISPLAY ERROR:", err);
-        setCompletedCalls(prev => prev + 1);
-      });
+      },
+      () => markSettled("display"),
+    );
 
     // ── Call 6: Network Info ───────────────────────────────────────────────
     // Returns Wi-Fi adapter name/MAC, Ethernet adapter name/MAC, Bluetooth flag.
-    invoke<NetworkInfo>("get_network_info")
-      .then((result) => {
+    void settleScanner(
+      () => invoke<NetworkInfo>("get_network_info"),
+      (result) => {
         console.log("NETWORK INFO:", result);
         setNetworkInfo(result);
         setData(prev => ({ ...prev, networkInfo: result }));
-        setCompletedCalls(prev => prev + 1);
-      })
-      .catch((err) => {
+      },
+      (err) => {
         console.error("NETWORK ERROR:", err);
-        setCompletedCalls(prev => prev + 1);
-      });
+      },
+      () => markSettled("network"),
+    );
 
     // ── Call 7: Memory Info ────────────────────────────────────────────────
     // Returns an array of MemoryModule — one entry per physical DIMM slot.
     // Slots with is_empty = true are counted but have no data to display.
-    invoke<MemoryModule[]>("get_memory_info")
-      .then((result) => {
+    void settleScanner(
+      () => invoke<MemoryModule[]>("get_memory_info"),
+      (result) => {
         console.log("MEMORY INFO:", result);
         setMemoryInfo(result);
         setData(prev => ({ ...prev, memoryInfo: result }));
-        setCompletedCalls(prev => prev + 1);
-      })
-      .catch((err) => {
+      },
+      (err) => {
         console.error("MEMORY ERROR:", err);
-        setCompletedCalls(prev => prev + 1);
-      });
+      },
+      () => markSettled("memory"),
+    );
 
     // ── Call 8: Storage Info ───────────────────────────────────────────────
-    invoke<StorageDevice[]>("get_storage_info")
-      .then((result) => {
-        console.log("STORAGE INFO:", result);
+    setStorageState("running");
+    let storageFinished = false;
+    const onProgress = new Channel<StorageDevice[]>();
+    onProgress.onmessage = (result) => {
+      if (storageFinished) return; // Never let late basic data overwrite final health.
+      setStorageInfo(result);
+      setData(prev => ({ ...prev, storageInfo: result }));
+    };
+    void settleScanner(
+      () => invoke<StorageDevice[]>("get_storage_info", { onProgress }),
+      (result) => {
+        storageFinished = true;
+        setStorageState(result.length ? "completed" : "unavailable");
         setStorageInfo(result);
         setData(prev => ({
           ...prev,
           storageInfo: result,
         }));
-        setCompletedCalls(prev => prev + 1);
-      })
-      .catch((err) => {
+      },
+      (err) => {
+        storageFinished = true;
+        setStorageState("failed");
         console.error("STORAGE ERROR:", err);
-        setCompletedCalls(prev => prev + 1);
-      });
+      },
+      () => markSettled("storage"),
+    );
     // ── Call 9: Camera Info ───────────────────────────────────────────────
-    invoke<CameraInfo | null>("get_camera_info")
-      .then((result) => {
+    void settleScanner(
+      () => invoke<CameraInfo | null>("get_camera_info"),
+      (result) => {
         console.log("CAMERA INFO:", result);
 
         setCameraInfo(result);
@@ -530,62 +492,50 @@ export function SystemScan({ onNext, isExecutionActive }: SystemScanProps) {
           ...prev,
           cameraInfo: result,
         }));
-
-        setCompletedCalls((prev) => prev + 1);
-      })
-      .catch((err) => {
+      },
+      (err) => {
         console.error("CAMERA ERROR:", err);
-
-        setCompletedCalls((prev) => prev + 1);
-      });
+      },
+      () => markSettled("camera"),
+    );
 
     // ── Call 10: Audio Info ───────────────────────────────────────────────
-    invoke<AudioInfo | null>("get_audio_info")
-      .then((result) => {
+    void settleScanner(
+      () => invoke<AudioInfo | null>("get_audio_info"),
+      (result) => {
         console.log("AUDIO INFO:", result);
         setAudioInfo(result);
         setData((prev) => ({
           ...prev,
           audioInfo: result,
-          scanCompleted: true,
         }));
-        setCompletedCalls((prev) => prev + 1);
-      })
-      .catch((err) => {
+      },
+      (err) => {
         console.error("AUDIO ERROR:", err);
-        setCompletedCalls((prev) => prev + 1);
-      });
+      },
+      () => markSettled("audio"),
+    );
 
   }, [isExecutionActive]); // Re-evaluates if this stage becomes active after a premature, non-active mount
 
 
-  // ===========================================================================
-  // EFFECT 3 — Auto-advance when all invoke() calls have settled
-  // ===========================================================================
-  // Watches completedCalls. Once it reaches 8 (total number of invoke() calls),
-  // calls onNext() to move to the next wizard step.
-  //
-  // The autoAdvanced ref prevents calling onNext() more than once even if
-  // this effect re-runs (e.g. React strict mode, parent re-renders).
-  //
-  // TO CHANGE THE TOTAL CALL COUNT: update the >= 8 threshold below.
-  // ===========================================================================
   useEffect(() => {
 
     // Only push the workflow forward when this stage is the active execution
     // step. Clicking back to review a completed scan should not re-trigger the
     // next stage.
     if (
-      completedCalls >= 10 &&
+      scanComplete &&
       !autoAdvanced.current &&
       isExecutionActive
     ) {
       autoAdvanced.current = true;
+      setData(prev => ({ ...prev, scanCompleted: true, scanTimestamp: Date.now() }));
       console.log("SYSTEM SCAN COMPLETE");
       onNext();
     }
 
-  }, [completedCalls, onNext, isExecutionActive]);
+  }, [scanComplete, onNext, isExecutionActive, setData]);
 
 
   // ===========================================================================
@@ -606,6 +556,7 @@ export function SystemScan({ onNext, isExecutionActive }: SystemScanProps) {
 
   // Primary storage device (first in list, typically the boot drive)
   const primaryDrive = storageInfo.length > 0 ? storageInfo[0] : null;
+  const storageMissing = storageFallback(storageState, !!primaryDrive);
 
   // Primary GPU (first detected GPU)
   const primaryGpu = gpuInfo.length > 0 ? gpuInfo[0] : null;
@@ -641,10 +592,10 @@ export function SystemScan({ onNext, isExecutionActive }: SystemScanProps) {
             Re-scan
           </button>
 
-          {/* Scan progress badge — switches to "complete" message at 8/8 */}
+          {/* Scan progress badge — switches only when every scanner is terminal */}
           <div className="flex items-center gap-1.5 text-xs bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 px-3 py-1.5 rounded-lg">
             <CheckCircle2 size={13} />
-            {completedCalls >= 10
+            {scanComplete
               ? "Scan Complete - Auto advancing..."
               : `Scanning... ${completedCalls}/10`}
           </div>
@@ -714,17 +665,18 @@ export function SystemScan({ onNext, isExecutionActive }: SystemScanProps) {
         <InfoCard
           icon={HardDrive}
           title="Storage"
+          status={storageState === "failed" ? "failed" : primaryDrive ? "ok" : storageState === "unavailable" ? "unavailable" : "scanning"}
           items={[
-            { label: "Type", value: primaryDrive?.storage_type || "Scanning..." },
-            { label: "Model", value: primaryDrive?.model || "Scanning..." },
-            { label: "Serial", value: primaryDrive?.serial || "Scanning..." },
-            { label: "Capacity", value: primaryDrive?.capacity_gb || (primaryDrive && normalizeCapacity(primaryDrive.size_gb)) || "Scanning..." },
-            { label: "Firmware", value: primaryDrive?.firmware || "N/A" },
-            { label: "Transport", value: primaryDrive?.transport || "N/A" },
-            { label: "Health", value: primaryDrive?.health_percent != null ? `${primaryDrive.health_percent}%` : "N/A" },
-            { label: "Temp", value: primaryDrive?.temperature_c != null ? `${primaryDrive.temperature_c}°C` : "N/A" },
-            { label: "Power On", value: primaryDrive?.power_on_hours != null ? `${primaryDrive.power_on_hours}h` : "N/A" },
-            { label: "Device", value: primaryDrive?.device || "N/A" },
+            { label: "Type", value: primaryDrive?.storage_type || storageMissing },
+            { label: "Model", value: primaryDrive?.model || storageMissing },
+            { label: "Serial", value: primaryDrive?.serial || storageMissing },
+            { label: "Capacity", value: primaryDrive?.capacity_gb || (primaryDrive && primaryDrive.size_gb > 0 && normalizeCapacity(primaryDrive.size_gb)) || storageMissing },
+            { label: "Firmware", value: primaryDrive?.firmware || "Unavailable" },
+            { label: "Transport", value: primaryDrive?.transport || "Unavailable" },
+            { label: "Health", value: primaryDrive?.health_percent != null ? `${primaryDrive.health_percent}%` : "Unavailable" },
+            { label: "Temp", value: primaryDrive?.temperature_c != null ? `${primaryDrive.temperature_c}°C` : "Unavailable" },
+            { label: "Power On", value: primaryDrive?.power_on_hours != null ? `${primaryDrive.power_on_hours}h` : "Unavailable" },
+            { label: "Device", value: primaryDrive?.device || "Unavailable" },
           ]}
         />
 

@@ -156,6 +156,174 @@ async fn get_wifi_status() -> Result<WifiStatus, String> {
         .and_then(|inner| inner.map_err(|e| e.to_string()))
 }
 
+/// Fetches the active PULSE app version (tbl_pulse_app_ver, app_version
+/// where active_yn = true). Always attempts the live Supabase lookup first
+/// — rather than gating on nmcli's reported Wi-Fi state (nmcli doesn't exist
+/// on non-Linux dev machines, and even on the target hardware "associated
+/// with an AP" isn't the same thing as "can actually reach Supabase") — and
+/// falls back to the local SQLite cache (database::app_version) on any
+/// failure: no network, DNS failure, Supabase unreachable, timeout, etc.
+/// Every successful Supabase fetch re-syncs the local cache so the most
+/// recent value is always available offline.
+#[tauri::command]
+async fn get_pulse_app_version(
+    state: tauri::State<'_, Mutex<rusqlite::Connection>>,
+) -> Result<String, String> {
+    let (base_url, key) = {
+        let conn = state
+            .lock()
+            .map_err(|e| format!("db lock poisoned: {}", e))?;
+        (
+            database::settings::get_setting(&conn, "supabase_url"),
+            database::settings::get_setting(&conn, "supabase_key"),
+        )
+    };
+
+    let remote = tokio::task::spawn_blocking(move || {
+        upload::app_version::fetch_active_app_version(&base_url, &key)
+    })
+    .await
+    .map_err(|e| format!("App version fetch task failed: {}", e))?;
+
+    match remote {
+        Ok(version) => {
+            // Sync: cache the freshly fetched value locally so it's still
+            // available the next time the network is down.
+            let conn = state
+                .lock()
+                .map_err(|e| format!("db lock poisoned: {}", e))?;
+            if let Err(e) = database::app_version::save_local_app_version(&conn, &version) {
+                eprintln!("Failed to cache app version locally: {}", e);
+            }
+            Ok(version)
+        }
+        Err(e) => {
+            eprintln!(
+                "Supabase app version fetch failed, falling back to local cache: {}",
+                e
+            );
+            let conn = state
+                .lock()
+                .map_err(|e| format!("db lock poisoned: {}", e))?;
+            database::app_version::get_local_app_version(&conn).ok_or_else(|| {
+                "No app version available (offline and no cached value)".to_string()
+            })
+        }
+    }
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AppUpdateInfo {
+    current_version: String,
+    new_version: String,
+}
+
+/// Checks whether Supabase's active app_version (tbl_pulse_app_ver) differs
+/// from what this specific device last recorded as installed
+/// (tbl_pulse_settings key "installed_app_version"). Meant to be called once
+/// when the app finishes loading.
+///
+/// Returns `None` when there's nothing to report: offline/unreachable, the
+/// versions already match, or this is the very first check this device has
+/// ever been able to make (in which case the current Supabase value is
+/// silently adopted as "installed" instead of prompting a freshly-deployed
+/// device to update itself). Returns `Some(AppUpdateInfo)` only when a real
+/// mismatch is found, for the frontend to prompt the user.
+#[tauri::command]
+async fn check_app_update(
+    state: tauri::State<'_, Mutex<rusqlite::Connection>>,
+) -> Result<Option<AppUpdateInfo>, String> {
+    let (base_url, key, installed) = {
+        let conn = state
+            .lock()
+            .map_err(|e| format!("db lock poisoned: {}", e))?;
+        (
+            database::settings::get_setting(&conn, "supabase_url"),
+            database::settings::get_setting(&conn, "supabase_key"),
+            database::settings::get_setting(&conn, "installed_app_version"),
+        )
+    };
+
+    let remote = tokio::task::spawn_blocking(move || {
+        upload::app_version::fetch_active_app_version(&base_url, &key)
+    })
+    .await
+    .map_err(|e| format!("Update check task failed: {}", e))?;
+
+    let remote_version = match remote {
+        Ok(v) => v,
+        // Offline / Supabase unreachable — nothing to report, not an error
+        // worth surfacing on every app load.
+        Err(_) => return Ok(None),
+    };
+
+    if installed.trim().is_empty() {
+        let conn = state
+            .lock()
+            .map_err(|e| format!("db lock poisoned: {}", e))?;
+        let _ =
+            database::settings::upsert_setting(&conn, "installed_app_version", &remote_version);
+        return Ok(None);
+    }
+
+    if installed == remote_version {
+        return Ok(None);
+    }
+
+    Ok(Some(AppUpdateInfo {
+        current_version: installed,
+        new_version: remote_version,
+    }))
+}
+
+/// Downloads the new udiag4 build from Supabase Storage
+/// (PULSE_Applications/udiag4), atomically replaces the running executable
+/// on the pendrive, records `new_version` as installed, then relaunches: a
+/// fresh process is spawned at the same (now-updated) path and this process
+/// exits immediately after, handing the kiosk display over to the new one.
+#[tauri::command]
+async fn apply_app_update(
+    state: tauri::State<'_, Mutex<rusqlite::Connection>>,
+    new_version: String,
+) -> Result<(), String> {
+    let (base_url, key) = {
+        let conn = state
+            .lock()
+            .map_err(|e| format!("db lock poisoned: {}", e))?;
+        (
+            database::settings::get_setting(&conn, "supabase_url"),
+            database::settings::get_setting(&conn, "supabase_key"),
+        )
+    };
+
+    let current_exe = std::env::current_exe()
+        .map_err(|e| format!("Could not determine the running executable's path: {}", e))?;
+
+    let exe_for_task = current_exe.clone();
+    tokio::task::spawn_blocking(move || {
+        upload::self_update::download_and_replace(&base_url, &key, &exe_for_task)
+    })
+    .await
+    .map_err(|e| format!("Update task failed: {}", e))??;
+
+    {
+        let conn = state
+            .lock()
+            .map_err(|e| format!("db lock poisoned: {}", e))?;
+        let _ = database::settings::upsert_setting(&conn, "installed_app_version", &new_version);
+    }
+
+    // Relaunch: current_exe now points at the newly downloaded build, so a
+    // fresh process at the same path runs it. Spawn the replacement before
+    // tearing this one down so the kiosk display hands over cleanly.
+    std::process::Command::new(&current_exe)
+        .spawn()
+        .map_err(|e| format!("Failed to relaunch after update: {}", e))?;
+
+    std::process::exit(0);
+}
+
 #[tauri::command]
 async fn shutdown_system() -> Result<(), String> {
     tokio::task::spawn_blocking(power::shutdown)
@@ -252,13 +420,26 @@ async fn play_speaker_test(
 }
 
 #[tauri::command]
-fn get_storage_info() -> Result<Vec<StorageDevice>, String> {
-    let storage = inventory::storage::collect()
-        .map_err(|e| e.to_string())?;
-
-    println!("STORAGE INFO: {:?}", storage);
-
-    Ok(storage)
+async fn get_storage_info(
+    on_progress: tauri::ipc::Channel<serde_json::Value>,
+) -> Result<Vec<StorageDevice>, String> {
+    // Blocking hardware commands must never occupy Tauri's UI thread.
+    // JoinError (including worker panic) rejects IPC so the frontend finally runs.
+    tokio::task::spawn_blocking(move || {
+        inventory::storage::collect_with_progress(|drives| {
+            let channel = &on_progress;
+            {
+                match serde_json::to_value(drives) {
+                    Ok(value) => {
+                        if channel.send(value).is_err() {
+                            eprintln!("[PULSE][Storage] progress receiver unavailable");
+                        }
+                    }
+                    Err(e) => eprintln!("[PULSE][Storage] progress serialization failed: {}", e),
+                }
+            }
+        }).map_err(|e| e.to_string())
+    }).await.map_err(|e| format!("Storage worker failed: {}", e))?
 }
 
 #[tauri::command]
@@ -1174,6 +1355,9 @@ pub fn run() {
                 connect_wifi_network,
                 disconnect_wifi_network,
                 get_wifi_status,
+                get_pulse_app_version,
+                check_app_update,
+                apply_app_update,
                 shutdown_system,
                 get_camera_info,
                 get_audio_info,

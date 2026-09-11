@@ -223,3 +223,24 @@ create .env file with below supabse details
 DATABASE_URL="postgresql://postgres.pesgdrfeauofhtbjqkbz:Renew2026DB@aws-1-ap-northeast-1.pooler.supabase.com:6543/postgres"
 SUPABASE_URL=https://pesgdrfeauofhtbjqkbz.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlc2dkcmZlYXVvZmh0Ympxa2J6Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NzgwNjg5NywiZXhwIjoyMDkzMzgyODk3fQ.pqikpnfrtSttjAS6Z4A-zyUyzTypveMEllxCuHVjqpE
+
+
+1) Grade is not saving the DB, please save the Grade in "tbl_pulse_inspections" table and field name is "grade"
+2) tbl_pulse_inspectors and tbl_pulse_lots tabkes are empty i think data is not saving in to this table from Lot and Inspector screens.
+
+
+1) create another table called tbl_pulse_mrp and create field uuid, model, memory_size, storage_size, mrp, created_date.
+
+2) now for the first time insert all the records from the according tables.
+
+3) in future recrods should get inserted through triggers from related tables.
+
+4) Only mrp value will not be there as of now because we are not getting this through udiag4.
+
+actually mrp should be update according to the below
+
+1) Laptop, Dell, Latitude 5420, 16 GB, 256 GB, Intel(R) Core(TM) i5-1145G7 	11th, 14, 51975	
+
+2) Laptop, Dell, Latitude 5420, 16 GB, 512 GB	Intel(R) Core(TM) i5-1145G7 	11th, 14, 56356
+
+our client Requirement is that when they plug the PULSE USB Pendrive in to their laptop automatically PULSE application should get executed without any manual intervention.

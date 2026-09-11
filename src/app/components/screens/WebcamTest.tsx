@@ -116,7 +116,10 @@ export function WebcamTest({ onNext }: WebcamTestProps) {
 
             {error && (
               <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-sm text-red-300">
-                {error}
+                <p>{error}</p>
+                <p className="mt-1 text-red-300/80">
+                  Camera not detected? Select <strong>Fail</strong> below to continue to the next test.
+                </p>
               </div>
             )}
 
@@ -172,7 +175,7 @@ export function WebcamTest({ onNext }: WebcamTestProps) {
               </button>
               <button
                 onClick={() => handleResult("fail")}
-                disabled={!hasFinished}
+                disabled={!hasFinished && !error}
                 className="flex items-center justify-center gap-2 py-3 rounded-lg text-sm bg-red-500 hover:bg-red-400 disabled:bg-[#16294a] disabled:text-slate-500 disabled:cursor-not-allowed text-white transition-colors"
               >
                 <XCircle size={16} />

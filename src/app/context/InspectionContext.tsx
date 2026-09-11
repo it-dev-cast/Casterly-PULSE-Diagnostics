@@ -82,13 +82,13 @@ interface InspectionContextType {
 
 const defaultGradingData: GradingData = {
   grades: {
-    lcd: null,
-    topCover: null,
-    bezel: null,
-    palmrest: null,
-    bottomCover: null,
-    keyboard: null,
-    touchpad: null,
+    lcd: "pass",
+    topCover: "pass",
+    bezel: "pass",
+    palmrest: "pass",
+    bottomCover: "pass",
+    keyboard: "pass",
+    touchpad: "pass",
   },
   selectedDefects: {
     lcd: [],

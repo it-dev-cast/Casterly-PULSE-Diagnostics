@@ -6,12 +6,12 @@ interface ClyNumberModalProps {
   onCancel: () => void;
 }
 
-const PREFIX = "CLY-";
+const PREFIX = "CLY";
 
 /**
  * Mandatory CLY Number gate shown every time a new inspection is started
  * (both "Start New Inspection" from the Active LOT summary and "New
- * Inspection" from the completion screen). The "CLY-" prefix is fixed and
+ * Inspection" from the completion screen). The "CLY" prefix is fixed and
  * non-editable; the user may only type digits 0-9 after it. The confirm
  * action stays disabled until at least one digit has been entered, so an
  * inspection cannot begin without a CLY Number -- unless the user taps

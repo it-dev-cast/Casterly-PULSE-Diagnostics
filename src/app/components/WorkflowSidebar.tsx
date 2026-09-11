@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import {
   Monitor,
   HardDrive,
@@ -17,6 +19,12 @@ import {
   Cloud,
   FolderSearch,
 } from "lucide-react";
+
+// How often to retry syncing the app version with Supabase. The backend
+// command (get_pulse_app_version) always attempts the live lookup itself and
+// falls back to its local SQLite cache on failure, so this is just a periodic
+// "try again" — it doesn't depend on any Wi-Fi state reported here.
+const APP_VERSION_POLL_MS = 60000;
 
 export type StageStatus = "pending" | "active" | "passed" | "failed";
 
@@ -51,6 +59,33 @@ export function WorkflowSidebar({
   estimatedRemaining,
   onNavigate,
 }: WorkflowSidebarProps) {
+  // Application version (tbl_pulse_app_ver.app_version where active_yn =
+  // true), shown at the bottom of the menu. get_pulse_app_version always
+  // tries Supabase first (re-syncing the local SQLite cache on success) and
+  // transparently falls back to that local cache on any failure — no
+  // network, Supabase unreachable, etc. — so this always has something to
+  // show once the app has synced at least once, online or offline.
+  const [appVersion, setAppVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchAppVersion = () => {
+      invoke<string>("get_pulse_app_version")
+        .then((version) => {
+          if (!cancelled) setAppVersion(version);
+        })
+        .catch((err) => console.error("Failed to fetch app version:", err));
+    };
+
+    fetchAppVersion();
+    const interval = setInterval(fetchAppVersion, APP_VERSION_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
   return (
     <aside className="fixed left-0 top-16 bottom-8 w-64 bg-[#0B2545] border-r border-[#123a63] flex flex-col overflow-hidden z-40">
       {/* Navigation links */}
@@ -148,6 +183,17 @@ export function WorkflowSidebar({
           );
         })}
       </div>
+
+      {/* App version — divider line above. Shown whenever a value is
+          available, whether it just came from Supabase or from the local
+          SQLite cache (used when Supabase can't be reached). */}
+      {appVersion && (
+        <div className="shrink-0 border-t border-[#123a63] px-3 py-2">
+          <span className="text-[10px] font-bold text-slate-300 tracking-wide">
+            Version = {appVersion}
+          </span>
+        </div>
+      )}
 
     </aside>
   );
